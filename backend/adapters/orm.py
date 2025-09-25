@@ -18,6 +18,6 @@ stracks = Table(
 
 embeddings = Table(
     "embeddings", metadata,
-    Column("track_id", Integer, primary_key=True),
+    Column("id", Integer, primary_key=True),
     Column("embeddings", Vector(512)),  # Assuming 512-dim embeddings
 )
