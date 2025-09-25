@@ -36,4 +36,4 @@ class Embedding(IEmbedding):
         images = self._preprocess(imgs_bgr)
         features = self.predictor(images)
         features = F.normalize(features)
-        return features.cpu().numpy()
+        return features
