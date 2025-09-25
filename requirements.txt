@@ -21,7 +21,6 @@ tabulate
 tensorboard
 gdown
 faiss-gpu
-faiss
 lap
 filterpy
 SQLAlchemy
