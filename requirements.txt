@@ -25,3 +25,4 @@ faiss
 lap
 filterpy
 SQLAlchemy
+pgvector

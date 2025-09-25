@@ -14,4 +14,8 @@ class STrack:
     end_frame: int
 
     bboxes: List[List[int]]  # List of bounding boxes [x1, y1, x2, y2, score]
-    embeddings: torch.Tensor = torch.empty((0, 512))  # Assuming 512-dim embeddings
+
+@dataclass
+class Embeddings:
+    track_id: int
+    embeddings: torch.Tensor  # Assuming 512-dim embeddings
