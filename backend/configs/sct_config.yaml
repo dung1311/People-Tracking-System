@@ -1,0 +1,27 @@
+DETECTION:
+  name: yolov11
+  yolov11:
+    model_path: weights/yolo11n.pt
+    task: detect
+    imgsz: 640
+    conf_thresh: 0.3 # 0.3
+    iou_thresh: 0.3
+    classes: [0]  # person
+    max_det: 32
+    device: cpu
+    min_obj_h: 0
+    min_obj_w: 0
+
+POSE:
+  name: rtmpose
+  rtmpose:
+    device: cpu
+    path: weights/rtmpose_x/rtmpose_onnx/rtmpose-x_simcc-body7_pt-body7_700e-384x288-71d7b7e9_20230629/end2end.onnx
+    input_size: [288, 384]
+  
+TRACKING:
+  name: SORT
+  SORT:
+    max_age: 30
+    min_hits: 3
+    iou_threshold: 0.3
