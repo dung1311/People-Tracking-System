@@ -17,9 +17,7 @@ POSE_ESTIMATOR:
     model_path: weights/rtmpose-l_256x192/end2end.onnx
     input_size: [192, 256]
 
-EMBEDDING:
-  name: fastreid
-  fastreid: configs/osnet-ain_x1.0-ibn_512_256x192_ccdmmps.yaml
+
 
 TRACKING:
   name: sort
@@ -38,5 +36,12 @@ TRACKING:
     use_byte: False
 
 TRACK_MANAGER:
-  max_age: 60
-  reid_threshold: 0.75
+  is_join_track: False
+  GALLERY:
+    max_num_embeddings: 30
+  MATCHING:
+    cosine_threshold: 0.5
+  EMBEDDING:
+    name: fastreid
+    fastreid: configs/osnet-ain_x1.0-ibn_512_256x192_ccdmmps.yaml
+

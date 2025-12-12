@@ -23,12 +23,11 @@ class Pipeline:
     def __init__(self, pipeline_config: Dict, input_config: Dict, camera_id: int):
         self.detector = DetectorFactory(pipeline_config["DETECTION"]).get_detector()
         # self.pe = PoseEstimatorFactory(pipeline_config["POSE_ESTIMATOR"]).get_pose_estimator()
-        self.embedder = EmbedderFactory(pipeline_config["EMBEDDING"]).get_embedder()
         self.tracker = TrackerFactory(pipeline_config["TRACKING"]).get_tracker()
         
-        self.track_manager = SingleTrackManager(pipeline_config, self.tracker, self.embedder)
+        self.track_manager = SingleTrackManager(pipeline_config["TRACK_MANAGER"])
         
-        video_path = input_config.get("video_path", "/home/dungnt/workspaces/HUST/DATN/be/data/videos/video_2min.mp4")
+        video_path = input_config.get("video_path", "/home/dungnt/People-Tracking-System/be/data/videos/video_2min.mp4")
         self.cap = cv2.VideoCapture(video_path)
         self.camera_id = camera_id
     
@@ -37,10 +36,7 @@ class Pipeline:
         current_frame = 0
 
         writer = setup_video_writer(self.cap, output_path="Video_2min.mp4")
-        
-        batch_tracks = []
-        BATCH_SIZE = 100
-        
+           
         with Session(engine) as session:
             while self.cap.isOpened():
                 ret, frame = self.cap.read()
@@ -52,13 +48,16 @@ class Pipeline:
                     print(f"Đang xử lý frame {current_frame}/{total_frames}", end="\r")
 
                 boxes = self.detector.detect(frame)
+                frame_info = {
+                    "cam_id": self.camera_id,
+                    "frame_id": current_frame
+                }
+                tracks = self.tracker.update(boxes, frame_info)
+                live_tracks = self.track_manager.process(tracks, frame_info)
+                annotated_frame = draw_tracks(frame, live_tracks)
+                writer.write(annotated_frame)
                 
-                # Use Track Manager
-                timestamp = datetime.utcnow()
-                live_tracks = self.track_manager.process_frame(frame, boxes)
                 
-                
-
         self.cap.release()
         writer.release()
         cv2.destroyAllWindows()

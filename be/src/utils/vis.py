@@ -5,6 +5,8 @@ import os
 import cv2
 import numpy as np  
 
+from modules.data_templates.sct_template import TrackInfo
+
 def draw_grid(frames: List[np.ndarray], camera_names: List[str]):
     if len(frames) == 1:
         return frames[0]
@@ -38,11 +40,11 @@ def draw_grid(frames: List[np.ndarray], camera_names: List[str]):
     
     return grid
 
-def draw_tracks(frame, tracks):
+def draw_tracks(frame, tracks: List[TrackInfo]):
     for track in tracks:
 
-        tlbr = track[:4]
-        track_id = int(track[4])
+        tlbr = track.bbox
+        track_id = track.tracker_id
 
         x1, y1, x2, y2 = map(int, tlbr)
         
