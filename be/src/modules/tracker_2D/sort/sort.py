@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np  
 from filterpy.kalman import KalmanFilter
@@ -168,7 +168,7 @@ class Sort(BaseTracker):
         self.trackers = []
         self.frame_count = 0
 
-    def update(self, dets: List[List[float]], **kwargs):
+    def update(self, dets: List[List[float]], frame_info: Optional[Dict]):
         if len(dets) == 0:
             dets = np.empty((0, 5))
         if not isinstance(dets, np.ndarray):

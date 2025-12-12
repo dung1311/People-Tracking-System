@@ -10,3 +10,4 @@ filterpy
 lap
 sqlmodel
 psycopg2-binary
+tqdm
