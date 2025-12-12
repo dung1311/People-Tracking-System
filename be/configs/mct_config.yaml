@@ -1,0 +1,18 @@
+DETECTION:
+  name: yolov11
+  yolov11:
+    model_path: ../weights/yolo11x.pt
+    task: detect
+    imgsz: 640
+    conf_thres: 0.5
+    iou_thres: 0.7
+    device: cuda
+    classes: 0
+    max_det: 300
+
+POSE_ESTIMATOR:
+  name: rtmpose
+  rtmpose:
+    device: cpu
+    model_path: ../weights/rtmpose-l_256x192/end2end.onnx
+    input_size: [192, 256]

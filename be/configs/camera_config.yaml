@@ -1,0 +1,31 @@
+INPUT:
+  type: video
+  entrance:
+    stream_path: ../data/videos/entrance.mp4
+    calib_file: ../data/cameras/entrance.json
+    h_w: (1080, 1920)
+    fps: 30
+
+  exit:
+    stream_path: ../data/videos/exit.mp4
+    calib_file: ../data/cameras/exit.json
+    h_w: (1080, 1920)
+    fps: 30
+  
+  cam1:
+    stream_path: ../data/videos/cam1.mp4
+    calib_file: ../data/cameras/cam1.json
+    h_w: (1080, 1920)
+    fps: 30
+  
+  cam2:
+    stream_path: ../data/videos/cam2.mp4
+    calib_file: ../data/cameras/cam2.json
+    h_w: (1080, 1920)
+    fps: 30
+  
+  cam3:
+    stream_path: ../data/videos/cam3.mp4
+    calib_file: ../data/cameras/cam3.json
+    h_w: (1080, 1920)
+    fps: 30

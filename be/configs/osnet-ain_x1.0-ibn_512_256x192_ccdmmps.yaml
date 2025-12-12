@@ -1,0 +1,39 @@
+CUDNN_BENCHMARK: true
+INPUT:
+  SIZE_TEST: [256, 192]
+  SIZE_TRAIN: [256, 192]
+MODEL:
+  BACKBONE:
+    ATT_DROP_RATE: 0.0
+    DEPTH: x1_0
+    DROP_PATH_RATIO: 0.1
+    DROP_RATIO: 0.0
+    FEAT_DIM: 512
+    LAST_STRIDE: 1
+    NAME: build_osnet_ain_backbone
+    NORM: BN
+    PRETRAIN: true
+    PRETRAIN_PATH: ''
+    SIE_COE: 3.0
+    STRIDE_SIZE: [16, 16]
+    WITH_IBN: true
+    WITH_NL: true
+    WITH_SE: false
+  DEVICE: cuda
+  FREEZE_LAYERS: [backbone]
+  HEADS:
+    CLS_LAYER: CircleSoftmax
+    EMBEDDING_DIM: 512
+    MARGIN: 0.35
+    NAME: EmbeddingHead
+    NECK_FEAT: after
+    NORM: BN
+    NUM_CLASSES: 3957
+    POOL_LAYER: GeneralizedMeanPoolingP
+    SCALE: 64
+    WITH_BNNECK: true
+  META_ARCHITECTURE: Baseline
+  PIXEL_MEAN: [123.675, 116.28, 103.53]
+  PIXEL_STD: [58.395, 57.120000000000005, 57.375]
+  QUEUE_SIZE: 8192
+  WEIGHTS: weights/fastreid_osnet-ain_x1.0-ibn_512_256x192_ccdmmps.pth

@@ -1,0 +1,12 @@
+opencv-python
+ultralytics
+rtmlib
+fastapi
+uvicorn[standard]
+yacs
+termcolor
+tabulate
+filterpy
+lap
+sqlmodel
+psycopg2-binary
