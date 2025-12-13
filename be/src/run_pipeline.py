@@ -23,8 +23,8 @@ def get_or_create_camera(session: Session, name: str, source: str) -> int:
 if __name__ == "__main__":
     init_db()
     
-    cfg = load_config("/home/dungnt/workspaces/HUST/DATN/be/configs/sct_config.yaml")
-    video_path = "/home/dungnt/workspaces/HUST/DATN/be/data/videos/video_2min.mp4"
+    cfg = load_config("./configs/sct_config.yaml")
+    video_path = "./data/videos/cam21.mkv"
     
     with Session(engine) as session:
         camera_id = get_or_create_camera(session, "Camera 1", video_path)

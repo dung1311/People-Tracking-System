@@ -4,7 +4,7 @@
 from __future__ import print_function
 
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Optional
 from ..base import BaseTracker
 from .association import *
 
@@ -192,7 +192,7 @@ class OCSort(BaseTracker):
         self.frame_count = 0
         KalmanBoxTracker.count = 0
 
-    def update(self, output_results, **kwargs):
+    def update(self, output_results, frame_info: Optional[Dict]):
         """
         Params:
           dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
@@ -202,8 +202,8 @@ class OCSort(BaseTracker):
         """
         if not isinstance(output_results, np.ndarray):
             output_results = np.array(output_results)
-        img_info = kwargs.get("img_info")
-        img_size = kwargs.get("img_size")
+        img_info = frame_info.get("img_info")
+        img_size = frame_info.get("img_size")
         
         if output_results is None:
             return np.empty((0, 5))
