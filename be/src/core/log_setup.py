@@ -36,7 +36,7 @@ def configure_logging():
         'loggers': {
             '': { 
                 'handlers': ['console', 'file'],
-                'level': 'INFO',
+                'level': 'DEBUG',
                 'propagate': True
             },
                  

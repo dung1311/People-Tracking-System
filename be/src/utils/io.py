@@ -39,7 +39,7 @@ class FileVideoStream:
     
     def stop(self):
         self.stopped = True
-
+    
 
 class FPS:
     def __init__(self):

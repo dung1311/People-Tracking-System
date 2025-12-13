@@ -4,7 +4,7 @@ DETECTION:
     model_path: weights/yolo11x.pt
     task: detect
     imgsz: 640
-    conf_thres: 0.5
+    conf_thres: 0.8
     iou_thres: 0.7
     device: cuda
     classes: 0
@@ -16,8 +16,6 @@ POSE_ESTIMATOR:
     device: cpu
     model_path: weights/rtmpose-l_256x192/end2end.onnx
     input_size: [192, 256]
-
-
 
 TRACKING:
   name: sort
@@ -36,11 +34,13 @@ TRACKING:
     use_byte: False
 
 TRACK_MANAGER:
-  is_join_track: False
+  is_join_track: True
   GALLERY:
-    max_num_embeddings: 30
+    max_live_time: 300
+    min_hits: 3
+    max_features: 50
   MATCHING:
-    cosine_threshold: 0.5
+    threshold: 0.4
   EMBEDDING:
     name: fastreid
     fastreid: configs/osnet-ain_x1.0-ibn_512_256x192_ccdmmps.yaml

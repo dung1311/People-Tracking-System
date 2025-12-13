@@ -16,12 +16,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 try:
     # Import đúng theo đường dẫn bạn cung cấp trong code mẫu
     from src.modules.data_templates.sct_template import TrackInfo, TrackState
-    from src.modules.gallery.in_mem.in_mem_gallery import InMemGallery
+    from be.src.modules.gallery.in_mem_gallery import InMemGallery
 except ImportError as e:
     # Fallback cho trường hợp chạy pytest tại root mà không cần sys.path
     try:
         from src.modules.data_templates.sct_template import TrackInfo, TrackState
-        from src.modules.gallery.in_mem.in_mem_gallery import InMemGallery
+        from be.src.modules.gallery.in_mem_gallery import InMemGallery
     except ImportError:
         raise ImportError(f"Không thể import module. Hãy đảm bảo bạn đang chạy từ root project hoặc thư mục tests. Lỗi chi tiết: {e}")
 
