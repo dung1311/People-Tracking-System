@@ -1,31 +1,13 @@
-<!DOCTYPE html>
-<html>
-<body style="text-align:center">
-
-<h2>WebSocket Video Stream</h2>
-<canvas id="videoCanvas"></canvas>
-
-<script>
-const canvas = document.getElementById("videoCanvas");
-const ctx = canvas.getContext("2d");
-
-const ws = new WebSocket("ws://localhost:8000/ws/video");
-ws.binaryType = "arraybuffer";
-
-ws.onmessage = function(event) {
-    const bytes = new Uint8Array(event.data);
-    const blob = new Blob([bytes], { type: "image/jpeg" });
-    const img = new Image();
-
-    img.onload = function() {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-    };
-
-    img.src = URL.createObjectURL(blob);
-};
-</script>
-
-</body>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>fe</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

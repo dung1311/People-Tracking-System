@@ -11,3 +11,4 @@ class CameraUpdate(CameraBase):
     source: str | None = None
     description: str | None = None
     is_active: bool | None = None
+    config_path: str | None = None

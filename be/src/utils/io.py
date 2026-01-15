@@ -64,3 +64,47 @@ class FPS:
     
     def fps(self):
         return self.__num_frames / self.elapsed() if self.elapsed() > 0 else 0
+
+class WebcamVideoStream:
+	def __init__(self, src: str=0, name="WebcamVideoStream"):
+		self.name = name
+		self.stopped = False
+		
+		# initialize the video camera stream and read the first frame
+		# from the stream
+		self.stream = cv2.VideoCapture(src)
+		if not self.stream.isOpened():
+			print(f"Error: Could not open video source {src}")
+			self.grabbed = False
+			self.frame = None
+			self.stopped = True
+			return
+
+		(self.grabbed, self.frame) = self.stream.read()
+
+	def start(self):
+		# start the thread to read frames from the video stream
+		t = Thread(target=self.update, name=self.name, args=())
+		t.daemon = True
+		t.start()
+		return self
+
+	def update(self):
+		# keep looping infinitely until the thread is stopped
+		while True:
+			# if the thread indicator variable is set, stop the thread
+			if self.stopped:
+				return
+
+			# otherwise, read the next frame from the stream
+			(self.grabbed, self.frame) = self.stream.read()
+
+	def read(self):
+		# return the frame most recently read
+		return self.frame
+
+	def stop(self):
+		# indicate that the thread should be stopped
+		self.stopped = True
+        
+    

@@ -23,8 +23,10 @@ class TrackState(Enum):
     DEAD = 3
 
 
+from datetime import datetime
+
 class TrackInfo:
-    def __init__(self, tracker_id, bbox, feat=None, frame_info: Dict = None):
+    def __init__(self, tracker_id, bbox, score=None, class_id=None, feat=None, frame_info: Dict = None):
         self.frame_info = frame_info
         self.cam_id = self.frame_info["cam_id"]
         self.tracker_id = tracker_id
@@ -32,6 +34,9 @@ class TrackInfo:
 
         self.frame_id = self.frame_info["frame_id"]
         self.bbox = bbox
+        self.score = score
+        self.class_id = class_id
+        self.timestamp = datetime.now()
 
         # Features are ALWAYS NumPy arrays
         self.features = [feat] if feat is not None else []
@@ -40,11 +45,14 @@ class TrackInfo:
         self.lost_age = 0
         self.hits = 1
 
-    def update_active(self, bbox, feature, frame_info: Dict, smooth_factor: float = 0.1):
+    def update_active(self, bbox, score, class_id, feature, frame_info: Dict, smooth_factor: float = 0.1):
         """
         Update track with EMA-smoothed appearance feature.
         """
         self.bbox = bbox
+        self.score = score
+        self.class_id = class_id
+        self.timestamp = datetime.now()
         self.state = TrackState.ACTIVE
         self.lost_age = 0
         self.frame_info = frame_info

@@ -1,0 +1,50 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: 
+      context: ./be
+    container_name: datn-backend
+    volumes:
+      - ./be/data:/app/data
+      - ./be/configs:/app/configs
+      - ./be/logs:/app/logs
+      # Map weights if needed
+      - ./be/yolo11n.pt:/app/yolo11n.pt
+    environment:
+      DATABASE_URL: postgresql://user:password@db:5432/db
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    
+    # --- GPU CONFIGURATION ---
+    # On the machine with GPU, uncomment the following 'deploy' section:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  frontend:
+    build:
+      context: ./fe
+    container_name: datn-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

@@ -1,0 +1,6 @@
+INPUT:
+  type: video
+  entrance:
+    stream_path: ../data/videos/5_persons.mp4
+    h_w: (1080, 1920)
+    fps: 30

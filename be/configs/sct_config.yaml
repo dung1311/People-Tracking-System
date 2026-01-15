@@ -4,7 +4,7 @@ DETECTION:
     model_path: weights/yolo11x.pt
     task: detect
     imgsz: 640
-    conf_thres: 0.8
+    conf_thres: 0.5
     iou_thres: 0.7
     device: cuda
     classes: 0
@@ -36,7 +36,7 @@ TRACKING:
 TRACK_MANAGER:
   is_join_track: True
   GALLERY:
-    max_live_time: 300
+    max_live_time: 9000 # 5 mins
     min_hits: 3
     max_features: 50
   MATCHING:

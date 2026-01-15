@@ -1,0 +1,1 @@
+docker exec pgvector-db psql -U admin -d sct -c "CREATE EXTENSION IF NOT EXISTS vector;"

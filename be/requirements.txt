@@ -3,6 +3,7 @@ ultralytics
 rtmlib
 fastapi
 uvicorn[standard]
+python-multipart
 yacs
 termcolor
 tabulate
@@ -13,3 +14,4 @@ psycopg2-binary
 tqdm
 pytest
 pgvector
+alembic

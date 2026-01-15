@@ -7,6 +7,7 @@ class CameraBase(SQLModel):
     source: str  # RTSP URL or file path
     description: Optional[str] = None
     is_active: bool = Field(default=True)
+    config_path: str = Field(default="configs/sct_config.yaml")
 
 class Camera(CameraBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

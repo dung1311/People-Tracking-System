@@ -61,6 +61,8 @@ class SingleTrackManager:
                 TrackInfo(
                     tracker_id=int(trk[4]),
                     bbox=trk[:4].tolist() if isinstance(trk, np.ndarray) else list(trk[:4]),
+                    score=float(trk[5]) if len(trk) > 5 else 0.0,
+                    class_id=int(trk[6]) if len(trk) > 6 else 0,
                     frame_info=frame_info
                 ) for trk in tracks
             ]
@@ -82,6 +84,9 @@ class SingleTrackManager:
         for trk, feat in zip(tracks, features):
             bbox = trk[:4].tolist() if isinstance(trk, np.ndarray) else list(trk[:4])
             tracker_id = int(trk[4])
+            score = float(trk[5]) if len(trk) > 5 else 0.0
+            class_id = int(trk[6]) if len(trk) > 6 else 0
+            
             current_tracker_ids.add(tracker_id)
             
             # Normalize feature
@@ -97,6 +102,10 @@ class SingleTrackManager:
                     # Still unconfirmed
                     continue
                 
+                # Update confirmed track info
+                confirmed_track.score = score
+                confirmed_track.class_id = class_id
+
                 # Track confirmed, need Re-ID
                 need_reid_tracks.append(confirmed_track)
             
@@ -109,7 +118,7 @@ class SingleTrackManager:
                     continue
                 
                 # Update track
-                track_info.update_active(bbox, feat, frame_info, self.smooth_factor)
+                track_info.update_active(bbox, score, class_id, feat, frame_info, self.smooth_factor)
                 
                 current_person_ids.add(track_info.person_id)
                 active_tracks.append(track_info)
