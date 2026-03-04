@@ -92,8 +92,36 @@ class SingleTrackManager:
             # Normalize feature
             feat = feat / (np.linalg.norm(feat) + 1e-8)
             
+            
+            
+            # Case 2: Existing confirmed track
+            if tracker_id in self.gallery.map_id:
+                track_info = self.gallery.get_track_by_tracker_id(tracker_id)
+                if track_info is None:
+                    logger.warning(f"Track {tracker_id} in map but not found in gallery")
+                    continue
+                
+                
+                
+                # Update track
+                track_info.update_active(bbox, score, class_id, feat, frame_info, self.smooth_factor)
+                pid = track_info.person_id
+                track_state = track_info.state
+                if track_state == TrackState.CHANGED:
+                    print(f"Track {track_info.person_id} is in CHANGED state")
+                    self.gallery.mark_person_id_lost(track_info.person_id)
+                    self.gallery.remove_mapped_tracker_id_and_person_id(tracker_id)
+                    print(self.gallery.get_track_by_person_id(pid).state) 
+                    continue
+                # check if current_features is far from the representative feature, if so, mark as lost and need Re-ID
+                
+                
+                current_person_ids.add(track_info.person_id)
+                active_tracks.append(track_info)
+
             # Case 1: New or unconfirmed track
-            if tracker_id not in self.gallery.map_id:
+            elif tracker_id not in self.gallery.map_id:
+                # tracker_id not in self.gallery.map_id:
                 confirmed_track = self.gallery.add_or_update_unconfirmed(
                     tracker_id, bbox, feat, frame_info
                 )
@@ -109,20 +137,6 @@ class SingleTrackManager:
                 # Track confirmed, need Re-ID
                 need_reid_tracks.append(confirmed_track)
             
-            # Case 2: Existing confirmed track
-            else:
-                track_info = self.gallery.get_track_by_tracker_id(tracker_id)
-                
-                if track_info is None:
-                    logger.warning(f"Track {tracker_id} in map but not found in gallery")
-                    continue
-                
-                # Update track
-                track_info.update_active(bbox, score, class_id, feat, frame_info, self.smooth_factor)
-                
-                current_person_ids.add(track_info.person_id)
-                active_tracks.append(track_info)
-        
         # Re-ID for newly confirmed tracks
         if need_reid_tracks:
             lost_tracks = self.gallery.get_lost_tracks()
@@ -149,10 +163,12 @@ class SingleTrackManager:
                             f"Re-ID: tracker={new_track.tracker_id} -> person={person_id}, "
                             f"distance={result.distance:.3f}"
                         )
+                        print(f"Track {new_track.tracker_id} matched with lost person {person_id} (distance={result.distance:.3f})")
                     else:
                         # New person
                         person_id = self.gallery.promote_to_active(new_track, None)
                         logger.debug(f"frame: {frame_info['frame_id']}. New person: tracker={new_track.tracker_id} -> person={person_id}")
+                        print(f"Track {new_track.tracker_id} assigned new person ID {person_id}")
                     
                     current_person_ids.add(person_id)
                     promoted_track = self.gallery.tracks.get(person_id)

@@ -36,11 +36,11 @@ class SCTVideoPipeline:
                     "frame_id": current_frame,
                     'frame': frame
                 }
-            
+        
             tracks = self.tracker.update(bboxes, frame_info)
             live_tracks = self.track_manager.process(tracks, frame_info)
             
-            annotated_frame = draw_tracks(frame, live_tracks, frame_info)
+            annotated_frame = draw_tracks(frame, live_tracks, frame_info, pid_only=True)
             writer.write(annotated_frame)
             print(f"Process frame {current_frame}/{total_frames}")
         

@@ -40,7 +40,7 @@ def draw_grid(frames: List[np.ndarray], camera_names: List[str]):
     
     return grid
 
-def draw_tracks(frame, tracks: List[TrackInfo], frame_info: Dict = None):
+def draw_tracks(frame, tracks: List[TrackInfo], frame_info: Dict = None, pid_only=False):
     frame_id = frame_info["frame_id"]
     frame_label = f"Frame: {frame_id}"
 
@@ -66,7 +66,7 @@ def draw_tracks(frame, tracks: List[TrackInfo], frame_info: Dict = None):
         # Draw bbox
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-        label = f"ID:{tid}->{pid}"
+        label = f"ID:{tid}->{pid}" if not pid_only else f"ID:{pid}"
 
         # ===== Auto scale text =====
         font = cv2.FONT_HERSHEY_SIMPLEX

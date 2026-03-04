@@ -33,6 +33,30 @@ class InMemGallery:
             return self.tracks.get(person_id)
         return None
     
+    def remove_track_by_tracker_id(self, tracker_id: int):
+        """Remove track by tracker_id (used for cleanup)"""
+        if tracker_id in self.map_id:
+            person_id = self.map_id[tracker_id]
+            if person_id in self.tracks:
+                del self.tracks[person_id]
+            del self.map_id[tracker_id]
+    
+    def mark_person_id_lost(self, person_id: int):
+        """Mark a track's person_id as changed (e.g., due to large appearance change)"""
+        if person_id in self.tracks:
+            track = self.tracks[person_id]
+            track.state = TrackState.LOST
+            logger.debug(f"Marked person_id={person_id} as CHANGED due to appearance change")
+    
+    def remove_mapped_tracker_id_and_person_id(self, tracker_id: int):
+        """Remove mapping for a tracker_id and its associated person_id (used when track is lost)"""
+        if tracker_id in self.map_id:
+            del self.map_id[tracker_id]
+    
+    def get_track_by_person_id(self, person_id: int) -> Optional[TrackInfo]:
+        """Get track by person_id"""
+        return self.tracks.get(person_id)
+    
     def add_or_update_unconfirmed(
         self, 
         tracker_id: int, 

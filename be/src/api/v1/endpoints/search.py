@@ -74,30 +74,25 @@ async def search_person(
     # 4. Search in DB
     # Fetch more results to allow for grouping (e.g., 200 raw frames -> ~10-20 unique sightings)
     
-    query = select(Track).order_by(Track.feature.cosine_distance(query_vector)).limit(200)
+    query = select(Track, Track.feature.cosine_distance(query_vector)).order_by(Track.feature.cosine_distance(query_vector)).limit(200)
     results = session.exec(query).all()
     
     # Process results
     # Group by (camera_id, person_id)
     grouped_tracks = {}
     
-    for track in results:
-        # Calculate cosine distance manually if needed or trust order?
-        # pgvector doesn't return distance in object. We usually need to select it.
-        # But for now, we rely on the order. 
-        # Ideally, we should update query to select distance.
-        
+    for track, dist in results:
         key = (track.camera_id, track.person_id)
         if key not in grouped_tracks:
             grouped_tracks[key] = {
                 "camera_id": track.camera_id,
                 "person_id": track.person_id,
-                "best_score": 1000.0, # Placeholder, lower is better
+                "best_score": dist, # Using distance as score (lower is better)
                 "start_time": track.timestamp,
                 "end_time": track.timestamp,
                 "count": 0,
                 "best_match": None,
-                "dist": 0 # We need distance
+                "distance": dist
             }
         
         group = grouped_tracks[key]
@@ -109,16 +104,15 @@ async def search_person(
         if track.timestamp > group["end_time"]:
             group["end_time"] = track.timestamp
             
-        # We don't have the exact distance score unless we query it. 
-        # But since we ordered by distance, the first time we see a key is likely the best (or close to).
-        # However, purely relying on order is okay for now.
+        # Since we ordered by distance, the first one is the best match
         if group["best_match"] is None:
              group["best_match"] = {
                  "id": track.id,
                  "bbox": track.bbox,
                  "score": track.score, # Detection score
                  "timestamp": track.timestamp,
-                 "frame_id": track.frame_id
+                 "frame_id": track.frame_id,
+                 "distance": dist
              }
              
     # Convert to list and filter by grouping limit if needed

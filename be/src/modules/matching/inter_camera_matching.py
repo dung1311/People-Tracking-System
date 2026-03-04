@@ -9,7 +9,7 @@ class FeatureMatcher:
     """Matching module using cosine similarity"""
     
     def __init__(self, config: Dict):
-        self.threshold = config["threshold"]
+        self.threshold = config["distance_threshold"]
     
     def compute_distance(self, feat1: np.ndarray, feat2: np.ndarray) -> float:
         """Compute cosine distance (1 - cosine similarity)"""
