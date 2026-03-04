@@ -26,6 +26,7 @@ export interface GroupedMatch {
         score: number;
         timestamp: string;
         frame_id: number;
+        distance: number;
     };
 }
 

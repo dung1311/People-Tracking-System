@@ -23,6 +23,11 @@ function MatchItem({ group }: { group: SearchResult['matches'][0] }) {
     // Formatting time
     const formatTime = (iso: string) => new Date(iso).toLocaleTimeString();
     
+    // Calculate similarity. Cosine distance is usually [0, 2]. 
+    // 0 is identical. We assume we want 1 - distance.
+    // If distance is small (e.g. 0.2), match is good (80%).
+    const similarity = Math.max(0, (1 - best_match.distance) * 100);
+    
     return (
         <Card>
             <div className="flex flex-col gap-2">
@@ -56,7 +61,7 @@ function MatchItem({ group }: { group: SearchResult['matches'][0] }) {
                              padding: '0 4px',
                              fontWeight: 'bold'
                          }}>
-                             {(best_match.score * 100).toFixed(0)}%
+                             {similarity.toFixed(0)}%
                          </div>
                     </div>
                 </div>
