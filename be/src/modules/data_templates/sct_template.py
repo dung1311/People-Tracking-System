@@ -123,3 +123,4 @@ class MatchResult:
     gallery_idx: int
     distance: float
     is_matched: bool
+    min_distance: float = None

@@ -65,14 +65,15 @@ class FeatureMatcher:
                 query_idx=q_idx,
                 gallery_idx=g_idx if is_matched else -1,
                 distance=distance,
-                is_matched=is_matched
+                is_matched=is_matched,
+                min_distance=np.min(distance_matrix[q_idx])  # Optional: store min distance for analysis
             ))
             matched_queries.add(q_idx)
         
         # Add unmatched queries
         for i in range(n_query):
             if i not in matched_queries:
-                results.append(MatchResult(i, -1, float('inf'), False))
+                results.append(MatchResult(i, -1, float('inf'), False, min_distance=np.min(distance_matrix[i])))
         
         # Sort by query_idx
         results.sort(key=lambda x: x.query_idx)

@@ -108,10 +108,11 @@ class SingleTrackManager:
                 pid = track_info.person_id
                 track_state = track_info.state
                 if track_state == TrackState.CHANGED:
-                    print(f"Track {track_info.person_id} is in CHANGED state")
+                    print(f"Track {track_info.tracker_id}, Person {track_info.person_id} is in CHANGED state")
                     self.gallery.mark_person_id_lost(track_info.person_id)
                     self.gallery.remove_mapped_tracker_id_and_person_id(tracker_id)
                     print(self.gallery.get_track_by_person_id(pid).state) 
+                    # new
                     continue
                 # check if current_features is far from the representative feature, if so, mark as lost and need Re-ID
                 
@@ -163,12 +164,12 @@ class SingleTrackManager:
                             f"Re-ID: tracker={new_track.tracker_id} -> person={person_id}, "
                             f"distance={result.distance:.3f}"
                         )
-                        print(f"Track {new_track.tracker_id} matched with lost person {person_id} (distance={result.distance:.3f})")
+                        print(f"Track {new_track.tracker_id} matched with lost person {person_id} (distance={result.distance:.3f}) (min_distance={result.min_distance:.3f})")
                     else:
                         # New person
                         person_id = self.gallery.promote_to_active(new_track, None)
                         logger.debug(f"frame: {frame_info['frame_id']}. New person: tracker={new_track.tracker_id} -> person={person_id}")
-                        print(f"Track {new_track.tracker_id} assigned new person ID {person_id}")
+                        print(f"Track {new_track.tracker_id} assigned new person ID {person_id}, min_distance={result.min_distance:.3f}")
                     
                     current_person_ids.add(person_id)
                     promoted_track = self.gallery.tracks.get(person_id)

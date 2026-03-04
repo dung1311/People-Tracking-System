@@ -19,3 +19,13 @@ def crop_detections(frame_img: np.ndarray, detections: List[List[float]]) -> Lis
             crops.append(crop)
     
     return crops
+
+def selection_boxes(detections: List[List[float]]) -> List[List[float]]:
+    selected = []
+    for det in detections:
+        x1, y1, x2, y2 = det[:4]
+        w = x2 - x1
+        h = y2 - y1
+        if w > 0 and 2 <= h / w <= 3:
+            selected.append(det)
+    return selected
