@@ -112,7 +112,18 @@ class SingleTrackManager:
                     self.gallery.mark_person_id_lost(track_info.person_id)
                     self.gallery.remove_mapped_tracker_id_and_person_id(tracker_id)
                     print(self.gallery.get_track_by_person_id(pid).state) 
-                    # new
+                    
+                    # Create a newly separated track and send it directly to Re-ID
+                    new_track = TrackInfo(
+                        tracker_id=tracker_id,
+                        bbox=bbox,
+                        score=score,
+                        class_id=class_id,
+                        frame_info=frame_info
+                    )
+                    # Assign the feature directly
+                    new_track.features = [feat] 
+                    need_reid_tracks.append(new_track)
                     continue
                 # check if current_features is far from the representative feature, if so, mark as lost and need Re-ID
                 

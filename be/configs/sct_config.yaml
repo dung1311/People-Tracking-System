@@ -1,19 +1,19 @@
 DETECTION:
   name: yolov11
   yolov11:
-    model_path: weights/yolo11x.pt
+    model_path: weights/yolo11n.pt
     task: detect
     imgsz: 640
     conf_thres: 0.5
     iou_thres: 0.7
-    device: cuda
+    device: cuda:1
     classes: 0
     max_det: 300
 
 POSE_ESTIMATION:
   name: rtmpose
   rtmpose:
-    device: cuda
+    device: cpu
     model_path: weights/rtmpose-l_256x192/end2end.onnx
     input_size: [192, 256]
 
@@ -40,7 +40,7 @@ TRACK_MANAGER:
     min_hits: 3
     max_features: 50
   MATCHING:
-    distance_threshold: 0.6
+    distance_threshold: 0.4
   EMBEDDING:
     name: fastreid
     fastreid: configs/osnet-ain_x1.0-ibn_512_256x192_ccdmmps.yaml

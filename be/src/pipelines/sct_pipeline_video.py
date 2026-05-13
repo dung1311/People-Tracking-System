@@ -66,7 +66,7 @@ class SCTVideoPipeline:
                 h = y2 - y1
                 mot_file.write(f"{current_frame},{pid},{x1},{y1},{w},{h},1,-1,-1,-1\n")
             
-            annotated_frame = draw_tracks(frame, live_tracks, frame_info, pid_only=False)
+            annotated_frame = draw_tracks(frame, live_tracks, frame_info, pid_only=True)
             writer.write(annotated_frame)
             print(f"Process frame {current_frame}/{total_frames}")
         

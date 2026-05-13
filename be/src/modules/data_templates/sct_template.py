@@ -88,6 +88,13 @@ class TrackInfo:
         self.features = [new_feat]
         
         self._croped_img = crop_detections(self.frame_info["frame"], [self.bbox])[0] if self.bbox is not None else None
+        self.save_debug_crop()
+        
+    def save_debug_crop(self):
+        """Save a debug crop of the current track."""
+        if not hasattr(self, '_croped_img') or self._croped_img is None:
+            self._croped_img = crop_detections(self.frame_info["frame"], [self.bbox])[0] if self.bbox is not None else None
+            
         try:
             if self._croped_img is not None:
                 pid = self.person_id if self.person_id is not None else f"tracker_{self.tracker_id}"

@@ -158,6 +158,10 @@ class InMemGallery:
         # Remove from unconfirmed
         if track.tracker_id in self.unconfirmed:
             del self.unconfirmed[track.tracker_id]
+            
+        # Save debug crop right after promotion to capture the first active frame
+        if hasattr(self.tracks[person_id], "save_debug_crop"):
+            self.tracks[person_id].save_debug_crop()
         
         return person_id
     
