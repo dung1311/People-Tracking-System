@@ -126,9 +126,10 @@ class DbGallery(InMemGallery):
         feature: np.ndarray,
         cam_id,
         frame_id: int,
+        is_beautiful: bool = False,
     ) -> Optional[TrackInfo]:
         return super().add_or_update_unconfirmed(
-            tracker_id, bbox, feature, cam_id, frame_id
+            tracker_id, bbox, feature, cam_id, frame_id, is_beautiful
         )
 
     def get_lost_tracks(self) -> List[Tuple[int, TrackInfo]]:

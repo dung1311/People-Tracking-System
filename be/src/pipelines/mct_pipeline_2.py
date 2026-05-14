@@ -63,6 +63,7 @@ class MCTPipeline2:
         self._output_video = out_cfg.get("video", "outputs/mct_output.mp4")
         self._output_txt = out_cfg.get("txt_dir", "outputs/txt")
         self._output_fps = out_cfg.get("fps", 25)
+        self._draw_local = out_cfg.get("draw_local", True)
 
     # ------------------------------------------------------------------
     # Main loop
@@ -233,13 +234,20 @@ class MCTPipeline2:
                 if t.person_id is None:
                     continue
                 gid = mapping.get((cid, t.person_id))
+                
+                label_parts = []
+                if self._draw_local:
+                    label_parts.append(f"L{t.person_id}")
+                
                 if gid is not None:
-                    label = f"G{gid}"
+                    label_parts.append(f"G{gid}")
                     color = tuple(int(c) for c in palette[gid % len(palette)])
                 else:
-                    label = f"L{t.person_id}"
+                    if not self._draw_local:
+                        continue
                     color = (128, 128, 128)
 
+                label = " | ".join(label_parts)
                 x1, y1, x2, y2 = map(int, t.bbox)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 (tw, th), _ = cv2.getTextSize(

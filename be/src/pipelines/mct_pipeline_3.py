@@ -29,6 +29,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import cv2
 import numpy as np
+import yaml
 from scipy.optimize import linear_sum_assignment
 
 from modules.data_templates.mct_template import CameraCalibration
@@ -48,10 +49,10 @@ MCT3_CONFIG = {
     "weights": {"homography": 0.5, "visual": 0.5},
     "thresholds": {
         "homography": 10.0,
-        "visual_gate": 0.4,
+        "visual_gate": 0.5,
         "homo_gate": 10.0,
         "combined": 0.6,
-        "reid_lost": 0.35,
+        "reid_lost": 0.4,
     },
     "global_track": {
         "max_lost_age": 300,
@@ -104,10 +105,12 @@ class _LostGlobalTrack:
 
 class _CameraWorker:
     def __init__(self, cam_id: int, video_path: str, sct_config: dict):
+        from modules.pose_estimator.factory import PoseEstimatorFactory
         self.cam_id = cam_id
         self.cap = cv2.VideoCapture(video_path)
         self.detector = DetectorFactory(sct_config["DETECTION"]).get_detector()
         self.tracker = TrackerFactory(sct_config["TRACKING"]).get_tracker()
+        self.pe = PoseEstimatorFactory(sct_config["POSE_ESTIMATION"]).get_pose_estimator()
         self.track_manager = MCTTrackManager(sct_config["TRACK_MANAGER"])
         self._latest_frame: Optional[np.ndarray] = None
         self._latest_tracks: List[TrackInfo] = []
@@ -130,6 +133,18 @@ class _CameraWorker:
         }
         bboxes = self.detector.detect(frame)
         tracks = self.tracker.update(bboxes, frame_info)
+        
+        # Check full body on generated tracks
+        if len(tracks) > 0:
+            from utils.pose import is_full_body
+            track_boxes = [trk[:4] for trk in tracks]
+            kpts_scores = self.pe.detect(frame, track_boxes)
+            is_full_body_dict = {}
+            for i, trk in enumerate(tracks):
+                tracker_id = int(trk[4])
+                is_full_body_dict[tracker_id] = is_full_body(kpts_scores[i], confidence_threshold=0.5) if i < len(kpts_scores) else False
+            frame_info["is_full_body"] = is_full_body_dict
+            
         self._latest_tracks = self.track_manager.process(tracks, frame_info)
         self._latest_frame = frame
         return True
@@ -148,34 +163,37 @@ class _CameraWorker:
 
 class MCTPipeline3:
 
-    def __init__(
-        self,
-        sct_config: dict,
-        camera_video_map: Dict[int, str],
-        camera_calib_map: Dict[int, str],
-        mct_config: dict | None = None,
-    ):
-        cfg = mct_config or MCT3_CONFIG
-        self.w_homo = cfg["weights"]["homography"]
-        self.w_vis = cfg["weights"]["visual"]
-        self.th_homo = cfg["thresholds"]["homography"]
-        self.th_vis_gate = cfg["thresholds"].get("visual_gate", 1.0)
-        self.th_homo_gate = cfg["thresholds"].get("homo_gate", float("inf"))
-        self.th_combined = cfg["thresholds"]["combined"]
-        self.th_reid_lost = cfg["thresholds"]["reid_lost"]
-        gt_cfg = cfg.get("global_track", {})
+    def __init__(self, sct_config: dict, mct_config_path: str):
+        with open(mct_config_path) as f:
+            cfg = yaml.safe_load(f)
+            
+        match_cfg = cfg.get("MATCHING", {})
+        self.w_homo = match_cfg.get("weights", {}).get("homography", 0.5)
+        self.w_vis = match_cfg.get("weights", {}).get("visual", 0.5)
+        self.th_homo = match_cfg.get("thresholds", {}).get("homography", 50.0)
+        self.th_vis_gate = match_cfg.get("thresholds", {}).get("visual_gate", 1.0)
+        self.th_homo_gate = match_cfg.get("thresholds", {}).get("homo_gate", float("inf"))
+        self.th_combined = match_cfg.get("thresholds", {}).get("combined", 0.5)
+        self.th_reid_lost = match_cfg.get("thresholds", {}).get("reid_lost", 0.3)
+        
+        gt_cfg = cfg.get("GLOBAL_TRACK", {})
         self.max_lost_age = gt_cfg.get("max_lost_age", 300)
         self.feat_smooth = gt_cfg.get("feature_smooth", 0.1)
+        
+        out_cfg = cfg.get("OUTPUT", {})
+        self._output_video = out_cfg.get("video", "outputs/mct3_output.mp4")
+        self._output_txt = out_cfg.get("txt_dir", "outputs/txt")
+        self._output_fps = out_cfg.get("fps", 25)
+        self._draw_local = out_cfg.get("draw_local", True)
 
+        cameras = cfg["CAMERAS"]
         self.H_invs: Dict[int, np.ndarray] = {}
-        for cam_id, path in camera_calib_map.items():
-            cal = CameraCalibration.load_from_json(path, cam_id)
-            self.H_invs[cam_id] = cal.H_inv
-
-        self.workers: Dict[int, _CameraWorker] = {
-            cid: _CameraWorker(cid, vp, sct_config)
-            for cid, vp in camera_video_map.items()
-        }
+        self.workers: Dict[int, _CameraWorker] = {}
+        for cam_id_str, cam_cfg in cameras.items():
+            cid = int(cam_id_str)
+            cal = CameraCalibration.load_from_json(cam_cfg["calibration"], cid)
+            self.H_invs[cid] = cal.H_inv
+            self.workers[cid] = _CameraWorker(cid, cam_cfg["video"], sct_config)
 
         # Global ID bookkeeping
         self._next_gid = 1
@@ -320,6 +338,7 @@ class MCTPipeline3:
         for k, idxs in enumerate(clusters):
             # Check if any track already carries a known global ID
             existing_gids: Set[int] = set()
+            cluster_cids = {int(cam_arr[i]) for i in idxs}
             for idx in idxs:
                 pid = tracks[idx].person_id
                 if pid in self._known_gids:
@@ -335,7 +354,8 @@ class MCTPipeline3:
                     if old_gid != gid:
                         self._merge_gid(old_gid, gid)
             else:
-                need_reid.append((k, cluster_feat))
+                if len(cluster_cids) >= 2:
+                    need_reid.append((k, cluster_feat))
 
         # ReID against lost globals for clusters without a known gid
         if need_reid and self._lost_globals:
@@ -357,11 +377,15 @@ class MCTPipeline3:
         # Allocate new IDs for remaining
         for k in range(len(clusters)):
             if cluster_gids[k] is None:
-                cluster_gids[k] = self._alloc_gid()
+                cluster_cids = {int(cam_arr[i]) for i in clusters[k]}
+                if len(cluster_cids) >= 2:
+                    cluster_gids[k] = self._alloc_gid()
 
         # Build per-camera remap + update gid_features
         for k, idxs in enumerate(clusters):
             gid = cluster_gids[k]
+            if gid is None:
+                continue
             seen_gids.add(gid)
             self._known_gids.add(gid)
 
@@ -418,9 +442,12 @@ class MCTPipeline3:
 
     def run(
         self,
-        output_path: str = "outputs/mct3_output.mp4",
-        txt_dir: str = "outputs/txt",
+        output_path: str | None = None,
+        txt_dir: str | None = None,
     ):
+        output_path = output_path or self._output_video
+        txt_dir = txt_dir or self._output_txt
+
         os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         os.makedirs(txt_dir, exist_ok=True)
 
@@ -475,6 +502,9 @@ class MCTPipeline3:
                     for t in per_cam_global.get(cid, []):
                         gid = t.person_id
                         x1, y1, x2, y2 = t.bbox
+                        if gid not in self._known_gids:
+                            if not self._draw_local:
+                                continue
                         fh.write(
                             f"{frame_count},{gid},{x1:.1f},{y1:.1f},"
                             f"{x2 - x1:.1f},{y2 - y1:.1f},1,-1,-1,-1\n"
@@ -503,7 +533,7 @@ class MCTPipeline3:
                     if writer is None:
                         h, w = grid.shape[:2]
                         writer = cv2.VideoWriter(
-                            output_path, cv2.VideoWriter_fourcc(*"mp4v"), 25, (w, h),
+                            output_path, cv2.VideoWriter_fourcc(*"mp4v"), self._output_fps, (w, h),
                         )
                     writer.write(grid)
 
@@ -542,8 +572,33 @@ class MCTPipeline3:
             gid = t.person_id
             if gid is None:
                 continue
-            label = f"G{gid}"
-            color = tuple(int(c) for c in palette[gid % len(palette)])
+
+            label_parts = []
+            
+            # Since pipeline 3 remaps local pids via apply_global_ids,
+            # tracks.tracker_id can be used to query original local IDs if needed.
+            # But the gallery.tracks keys (which set t.person_id) are the remapped ones.
+            # For simplicity, if it's not a global id, it's the original local id.
+            is_global = gid in self._known_gids
+            
+            if self._draw_local:
+                if not is_global:
+                    label_parts.append(f"L{t.person_id}")
+                else:
+                    # In Pipeline 3, once assigned, person_id IS the global ID. 
+                    # If we really wanted the old local ID here we would query gallery.map_id[t.tracker_id] 
+                    # but for now we just show global
+                    pass
+
+            if not is_global:
+                if not self._draw_local:
+                    continue
+                color = (128, 128, 128)
+            else:
+                label_parts.append(f"G{gid}")
+                color = tuple(int(c) for c in palette[gid % len(palette)])
+
+            label = " | ".join(label_parts)
 
             x1, y1, x2, y2 = map(int, t.bbox)
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)

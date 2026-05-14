@@ -1,0 +1,36 @@
+MATCHING:
+  weights:
+    homography: 1
+    visual: 0
+
+  thresholds:
+    homography: 150.0       # normalisation cap (world-plane units)
+    visual_gate: 1      # hard gate: reject if cosine dist > this
+    homo_gate: 100.0        # hard gate: reject if world-plane dist > this
+    combined: 0.6          # clustering edge threshold (after gates pass)
+    reid: 0.4              # cosine distance for re-id against globals
+
+GLOBAL_TRACK:
+  max_lost_age: 300        # frames before removing a lost global track
+  feature_smooth: 0.1      # EMA factor for feature update
+
+CAMERAS:
+  21:
+    video: data/videos/awl/cam21.mp4
+    calibration: data/cameras/awl/cam21.json
+  23:
+    video: data/videos/awl/cam23.mp4
+    calibration: data/cameras/awl/cam23.json
+  24:
+    video: data/videos/awl/cam24.mp4
+    calibration: data/cameras/awl/cam23.json
+  # 62:
+  #   video: data/videos/cam62.mp4
+  #   calibration: data/cameras/cam62.json
+
+
+OUTPUT:
+  video: outputs/awl_3cams_3.mp4
+  txt_dir: outputs/txt
+  fps: 25
+  draw_local: False

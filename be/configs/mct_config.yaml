@@ -33,3 +33,4 @@ OUTPUT:
   video: outputs/mct_output.mp4
   txt_dir: outputs/txt
   fps: 25
+  draw_local: False

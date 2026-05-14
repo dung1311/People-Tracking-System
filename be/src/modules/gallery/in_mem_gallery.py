@@ -64,17 +64,18 @@ class InMemGallery:
         feature: np.ndarray,
         cam_id,
         frame_id: int,
+        is_beautiful: bool = False,
     ) -> Optional[TrackInfo]:
         """Add or update an unconfirmed track.
 
-        Returns the TrackInfo once it accumulates *min_hits* observations,
-        otherwise returns None.
+        Returns the TrackInfo once it accumulates *min_hits* observations
+        and has at least one beautiful embedding, otherwise returns None.
         """
         if tracker_id not in self.unconfirmed:
             self.unconfirmed[tracker_id] = TrackInfo(
                 tracker_id=tracker_id,
                 bbox=bbox,
-                feat=feature,
+                feat=feature if is_beautiful else None,
                 cam_id=cam_id,
                 frame_id=frame_id,
             )
@@ -83,12 +84,13 @@ class InMemGallery:
             trk.bbox = bbox
             trk.cam_id = cam_id
             trk.frame_id = frame_id
-            if len(trk.features) >= self.max_features:
-                trk.features.pop(0)
-            trk.features.append(feature)
+            if is_beautiful:
+                if len(trk.features) >= self.max_features:
+                    trk.features.pop(0)
+                trk.features.append(feature)
             trk.hits += 1
 
-        if self.unconfirmed[tracker_id].hits >= self.min_hits:
+        if self.unconfirmed[tracker_id].hits >= self.min_hits and len(self.unconfirmed[tracker_id].features) > 0:
             return self.unconfirmed[tracker_id]
         return None
 

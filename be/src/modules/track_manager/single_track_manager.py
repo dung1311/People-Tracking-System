@@ -119,6 +119,9 @@ class SingleTrackManager:
             bbox, tracker_id, score, class_id = self._parse_track(trk)
             current_tracker_ids.add(tracker_id)
             feat = feat / (np.linalg.norm(feat) + 1e-8)
+            
+            is_beautiful = frame_info.get("is_full_body", [])
+            is_beautiful_for_track = is_beautiful[tracker_id] if isinstance(is_beautiful, dict) and tracker_id in is_beautiful else False
 
             if tracker_id in self.gallery.map_id:
                 result = self._handle_confirmed_track(
@@ -134,7 +137,7 @@ class SingleTrackManager:
                     active_tracks.append(track_info)
             else:
                 confirmed = self._handle_unconfirmed_track(
-                    tracker_id, bbox, score, class_id, feat, cam_id, frame_id
+                    tracker_id, bbox, score, class_id, feat, cam_id, frame_id, is_beautiful_for_track
                 )
                 if confirmed is not None:
                     need_reid_tracks.append(confirmed)
@@ -231,10 +234,11 @@ class SingleTrackManager:
         feat: np.ndarray,
         cam_id,
         frame_id: int,
+        is_beautiful: bool = False,
     ) -> Optional[TrackInfo]:
         """Buffer an unconfirmed track; return it when it reaches *min_hits*."""
         confirmed = self.gallery.add_or_update_unconfirmed(
-            tracker_id, bbox, feat, cam_id, frame_id
+            tracker_id, bbox, feat, cam_id, frame_id, is_beautiful
         )
         if confirmed is None:
             return None
