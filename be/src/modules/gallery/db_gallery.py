@@ -21,6 +21,9 @@ class DbGallery(InMemGallery):
         super().__init__(config)
         self._load_from_db()
 
+    # ------------------------------------------------------------------
+    # Persistence helpers
+    # ------------------------------------------------------------------
     def _load_from_db(self) -> None:
         try:
             with Session(engine) as session:
@@ -31,12 +34,6 @@ class DbGallery(InMemGallery):
 
             max_person_id = 0
             for row in rows:
-                frame_info = {
-                    "cam_id": row.cam_id,
-                    "frame_id": row.frame_id,
-                    "frame": None,
-                }
-
                 initial_feat = None
                 if row.features:
                     initial_feat = np.array(row.features[-1], dtype=np.float32)
@@ -47,14 +44,21 @@ class DbGallery(InMemGallery):
                     score=row.score,
                     class_id=row.class_id,
                     feat=initial_feat,
-                    frame_info=frame_info,
+                    cam_id=row.cam_id,
+                    frame_id=row.frame_id,
                 )
 
                 if row.features:
-                    track.features = [np.array(f, dtype=np.float32) for f in row.features]
+                    track.features = [
+                        np.array(f, dtype=np.float32) for f in row.features
+                    ]
 
                 track.person_id = row.person_id
-                track.state = TrackState[row.state] if row.state in TrackState.__members__ else TrackState.UNCONFIRM
+                track.state = (
+                    TrackState[row.state]
+                    if row.state in TrackState.__members__
+                    else TrackState.UNCONFIRM
+                )
                 track.lost_age = row.lost_age
                 track.hits = row.hits
 
@@ -74,16 +78,17 @@ class DbGallery(InMemGallery):
                 session.exec(delete(GalleryTrack))
 
                 for person_id, track in self.tracks.items():
-                    cam_id = int(track.frame_info.get("cam_id", 0)) if track.frame_info else 0
-                    frame_id = int(track.frame_info.get("frame_id", 0)) if track.frame_info else 0
-                    features = [f.tolist() if isinstance(f, np.ndarray) else list(f) for f in track.features]
+                    features = [
+                        f.tolist() if isinstance(f, np.ndarray) else list(f)
+                        for f in track.features
+                    ]
 
                     row = GalleryTrack(
                         person_id=person_id,
                         tracker_id=int(track.tracker_id),
                         is_mapped=self.map_id.get(int(track.tracker_id)) == person_id,
-                        cam_id=cam_id,
-                        frame_id=frame_id,
+                        cam_id=int(track.cam_id) if track.cam_id is not None else 0,
+                        frame_id=int(track.frame_id) if track.frame_id is not None else 0,
                         bbox=list(track.bbox) if track.bbox is not None else [],
                         score=float(track.score) if track.score is not None else 0.0,
                         class_id=int(track.class_id) if track.class_id is not None else 0,
@@ -99,6 +104,9 @@ class DbGallery(InMemGallery):
         except Exception:
             logger.exception("Failed to persist gallery state to database")
 
+    # ------------------------------------------------------------------
+    # Overrides that persist after mutation
+    # ------------------------------------------------------------------
     def remove_track_by_tracker_id(self, tracker_id: int):
         super().remove_track_by_tracker_id(tracker_id)
         self._persist_all_tracks()
@@ -107,8 +115,8 @@ class DbGallery(InMemGallery):
         super().mark_person_id_lost(person_id)
         self._persist_all_tracks()
 
-    def remove_mapped_tracker_id_and_person_id(self, tracker_id: int):
-        super().remove_mapped_tracker_id_and_person_id(tracker_id)
+    def remove_mapped_tracker_id(self, tracker_id: int):
+        super().remove_mapped_tracker_id(tracker_id)
         self._persist_all_tracks()
 
     def add_or_update_unconfirmed(
@@ -116,14 +124,19 @@ class DbGallery(InMemGallery):
         tracker_id: int,
         bbox: List[float],
         feature: np.ndarray,
-        frame_info: Dict,
+        cam_id,
+        frame_id: int,
     ) -> Optional[TrackInfo]:
-        return super().add_or_update_unconfirmed(tracker_id, bbox, feature, frame_info)
+        return super().add_or_update_unconfirmed(
+            tracker_id, bbox, feature, cam_id, frame_id
+        )
 
     def get_lost_tracks(self) -> List[Tuple[int, TrackInfo]]:
         return super().get_lost_tracks()
 
-    def promote_to_active(self, track: TrackInfo, person_id: Optional[int] = None) -> int:
+    def promote_to_active(
+        self, track: TrackInfo, person_id: Optional[int] = None
+    ) -> int:
         pid = super().promote_to_active(track, person_id)
         self._persist_all_tracks()
         return pid

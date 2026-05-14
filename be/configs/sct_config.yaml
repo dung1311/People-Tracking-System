@@ -1,19 +1,19 @@
 DETECTION:
   name: yolov11
   yolov11:
-    model_path: weights/yolo11n.pt
+    model_path: weights/yolo11x.pt
     task: detect
     imgsz: 640
     conf_thres: 0.5
     iou_thres: 0.7
-    device: cuda:1
+    device: cuda
     classes: 0
     max_det: 300
 
 POSE_ESTIMATION:
   name: rtmpose
   rtmpose:
-    device: cpu
+    device: cuda
     model_path: weights/rtmpose-l_256x192/end2end.onnx
     input_size: [192, 256]
 
@@ -35,6 +35,8 @@ TRACKING:
 
 TRACK_MANAGER:
   is_join_track: True
+  smooth_factor: 0.1
+  appearance_threshold: 0.5
   GALLERY:
     max_live_time: 24000 # 5 mins
     min_hits: 3

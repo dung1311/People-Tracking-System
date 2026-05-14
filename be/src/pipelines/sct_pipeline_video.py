@@ -29,13 +29,6 @@ class SCTVideoPipeline:
         writer = setup_video_writer(self.cap, output_path=f'{self.video_name}.mp4')
         mot_file = open(f'outputs/txt/{self.video_name}.txt', 'w')
         
-        # delete folder debug if exists
-        if os.path.exists("debug"):
-            import shutil
-            shutil.rmtree("debug")
-        else:
-            os.makedirs("debug")
-
         while self.cap.isOpened():
             ret, frame = self.cap.read()
             if not ret:
@@ -68,7 +61,7 @@ class SCTVideoPipeline:
             
             annotated_frame = draw_tracks(frame, live_tracks, frame_info, pid_only=True)
             writer.write(annotated_frame)
-            print(f"Process frame {current_frame}/{total_frames}")
+            logger.info("Frame %d/%d", current_frame, total_frames)
         
         mot_file.close()
         self.cap.release()

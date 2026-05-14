@@ -65,7 +65,7 @@ class SCTCameraPipeline:
                     break
 
                 if current_frame % 100 == 0:
-                    print(f"Frame: {current_frame}")
+                    logger.info("Frame: %d", current_frame)
 
         except KeyboardInterrupt:
             logger.info("Pipeline stopped by user.")

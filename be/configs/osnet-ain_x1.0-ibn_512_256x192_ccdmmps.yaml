@@ -19,7 +19,7 @@ MODEL:
     WITH_IBN: true
     WITH_NL: true
     WITH_SE: false
-  DEVICE: cuda:1
+  DEVICE: cuda
   FREEZE_LAYERS: [backbone]
   HEADS:
     CLS_LAYER: CircleSoftmax

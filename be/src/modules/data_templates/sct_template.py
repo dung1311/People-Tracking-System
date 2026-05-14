@@ -1,21 +1,9 @@
 from dataclasses import dataclass
-from typing import List, Dict
-from torch import Tensor
+from typing import List, Optional
 from enum import Enum
-import numpy as np
-from utils.box import crop_detections
-import os
-import cv2
+from datetime import datetime
 
-class Detection:
-    """
-    Detection container.
-    Feature is converted to NumPy immediately to avoid torch/numpy mixing.
-    """
-    def __init__(self, box: List[float], feat: Tensor):
-        self.box = box
-        # Always store feature as NumPy array
-        self.feat = feat.detach().cpu().numpy()
+import numpy as np
 
 
 class TrackState(Enum):
@@ -26,103 +14,95 @@ class TrackState(Enum):
     CHANGED = 4
 
 
-from datetime import datetime
-
 class TrackInfo:
-    def __init__(self, tracker_id, bbox, score=None, class_id=None, feat=None, frame_info: Dict = None):
-        self.frame_info = frame_info
-        self.cam_id = self.frame_info["cam_id"]
-        self.tracker_id = tracker_id
-        self.person_id = None
+    """Pure data container for a single tracked person."""
 
-        self.frame_id = self.frame_info["frame_id"]
+    def __init__(
+        self,
+        tracker_id: int,
+        bbox: List[float],
+        score: float = None,
+        class_id: int = None,
+        feat: np.ndarray = None,
+        cam_id=None,
+        frame_id: int = None,
+    ):
+        self.tracker_id = tracker_id
+        self.person_id: Optional[int] = None
+        self.cam_id = cam_id
+        self.frame_id = frame_id
         self.bbox = bbox
         self.score = score
         self.class_id = class_id
         self.timestamp = datetime.now()
 
-        # Features are ALWAYS NumPy arrays
-        self.features = [feat] if feat is not None else []
+        if feat is not None:
+            if hasattr(feat, "detach"):
+                feat = feat.detach().cpu().numpy()
+            self.features: List[np.ndarray] = [feat]
+        else:
+            self.features: List[np.ndarray] = []
 
-        self.state: TrackState = TrackState.UNCONFIRM
+        self.state = TrackState.UNCONFIRM
         self.lost_age = 0
         self.hits = 1
-        
 
-    
-    def update_active(self, bbox, score, class_id, feature, frame_info: Dict, smooth_factor: float = 0.1):
-        """
-        Update track with EMA-smoothed appearance feature.
+    def update(
+        self,
+        bbox: List[float],
+        score: float,
+        class_id: int,
+        feature: np.ndarray,
+        frame_id: int,
+        smooth_factor: float = 0.1,
+        appearance_threshold: float = 0.5,
+    ):
+        """Update track with new observation.
+
+        If appearance diverges beyond *appearance_threshold* (cosine distance),
+        the state is set to CHANGED and features are left untouched so that the
+        caller can decide what to do (e.g. trigger Re-ID).
+
+        Otherwise the feature is EMA-smoothed and state becomes ACTIVE.
         """
         self.bbox = bbox
         self.score = score
         self.class_id = class_id
+        self.frame_id = frame_id
         self.timestamp = datetime.now()
-        self.state = TrackState.ACTIVE
         self.lost_age = 0
-        self.frame_info = frame_info
-        # Safety: ensure NumPy
-        if isinstance(feature, Tensor):
+
+        if hasattr(feature, "detach"):
             feature = feature.detach().cpu().numpy()
 
         curr = self.get_representative_feature()
-
-        # First appearance
-        if curr is None:
-            new_feat = feature
-        else:
-            # if cosine distance is large, mark as lost and need Re-ID
-            cos_dist = 1 - np.dot(curr, feature) / (np.linalg.norm(curr) * np.linalg.norm(feature) + 1e-8)
-            if cos_dist > 0.5:  # Threshold can be tuned
+        if curr is not None:
+            cos_dist = 1 - np.dot(curr, feature) / (
+                np.linalg.norm(curr) * np.linalg.norm(feature) + 1e-8
+            )
+            if cos_dist > appearance_threshold:
                 self.state = TrackState.CHANGED
-                print(f"Track {self.person_id} appearance changed (cos_dist={cos_dist:.3f}), marking as CHANGED and needs Re-ID")
                 return
-            new_feat = (1.0 - smooth_factor) * curr + smooth_factor * feature
 
-        # Normalize
-        norm = np.linalg.norm(new_feat)
+        smoothed = (
+            feature
+            if curr is None
+            else (1.0 - smooth_factor) * curr + smooth_factor * feature
+        )
+        norm = np.linalg.norm(smoothed)
         if norm > 0:
-            new_feat = new_feat / norm
+            smoothed = smoothed / norm
+        self.features = [smoothed]
+        self.state = TrackState.ACTIVE
 
-        # Keep only latest smoothed feature
-        self.features = [new_feat]
-        
-        self._croped_img = crop_detections(self.frame_info["frame"], [self.bbox])[0] if self.bbox is not None else None
-        self.save_debug_crop()
-        
-    def save_debug_crop(self):
-        """Save a debug crop of the current track."""
-        if not hasattr(self, '_croped_img') or self._croped_img is None:
-            self._croped_img = crop_detections(self.frame_info["frame"], [self.bbox])[0] if self.bbox is not None else None
-            
-        try:
-            if self._croped_img is not None:
-                pid = self.person_id if self.person_id is not None else f"tracker_{self.tracker_id}"
-                out_dir = os.path.join("debug", str(pid))
-                os.makedirs(out_dir, exist_ok=True)
-                frame_id = self.frame_info.get("frame_id", "unknown")
-                cam_id = self.frame_info.get("cam_id", "cam")
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                fname = f"{frame_id}.jpg"
-                out_path = os.path.join(out_dir, fname)
-                cv2.imwrite(out_path, self._croped_img)
-        except Exception as e:
-            print(f"Failed to save crop for track {self.tracker_id}: {e}")
-        
-    def get_representative_feature(self):
-        """
-        Returns L2-normalized average feature or None.
-        """
+    def get_representative_feature(self) -> Optional[np.ndarray]:
+        """Return L2-normalised mean of stored features, or None."""
         if not self.features:
             return None
-
         avg = np.mean(self.features, axis=0)
         norm = np.linalg.norm(avg)
+        return avg if norm == 0 else avg / norm
 
-        if norm == 0:
-            return avg
-
-        return avg / norm
 
 @dataclass
 class MatchResult:
