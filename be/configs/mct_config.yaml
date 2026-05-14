@@ -24,6 +24,10 @@ CAMERAS:
   66:
     video: data/videos/cam66.mp4
     calibration: data/cameras/cam66.json
+  62:
+    video: data/videos/cam62.mp4
+    calibration: data/cameras/cam62.json
+
 
 OUTPUT:
   video: outputs/mct_output.mp4
