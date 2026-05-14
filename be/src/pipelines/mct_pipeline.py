@@ -46,7 +46,7 @@ MCT_CONFIG = {
     },
     "thresholds": {
         "epipolar": 100.0,
-        "homography": 50,
+        "homography": 10,
         "visual": 0.5,
         "frechet": 300.0,
         "combined": 0.7,
