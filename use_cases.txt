@@ -1,0 +1,133 @@
+================================================================================
+         HỆ THỐNG THEO DÕI ĐỐI TƯỢNG ĐA CAMERA (PEOPLE-TRACKING-SYSTEM)
+         BẢN PHÂN TÍCH CHI TIẾT CÁC TRƯỜNG HỢP SỬ DỤNG (USE CASES DOCUMENT)
+================================================================================
+
+Tài liệu này đặc tả chi tiết toàn bộ các trường hợp sử dụng (Use Cases) của Hệ thống theo dõi đối tượng liên camera (Multi-Camera Tracking System - MCT). Các Use Cases được chia nhóm rõ ràng từ lõi xử lý AI, ứng dụng thực tế nghiệp vụ, đến các chức năng quản trị hệ thống và tích hợp API.
+
+--------------------------------------------------------------------------------
+PHẦN 1: NHÓM USE CASES LÕI XỬ LÝ AI & PHÂN TÍCH (CORE AI ANALYTICS ENGINE)
+--------------------------------------------------------------------------------
+
+UC-1.1: Theo dõi đối tượng liên tục giữa các Camera không chồng lấn (Cross-Camera Target Tracking)
+- Tác nhân (Actor): Camera Stream, Xử lý lõi MCT.
+- Mô tả: Theo dõi một người di chuyển liền mạch qua các góc nhìn (field-of-view) khác nhau của nhiều camera được lắp đặt tại các vị trí nối tiếp nhau.
+- Quy trình:
+  1. Camera 1 phát hiện và theo dõi cục bộ đối tượng (Local ID L1).
+  2. Đối tượng đi ra khỏi vùng quan sát của Camera 1 và bước vào vùng quan sát của Camera 2.
+  3. Camera 2 phát hiện đối tượng mới (Local ID L2).
+  4. Hệ thống chuyển đổi tọa độ chân đối tượng sang hệ tọa độ thế giới (Homography Ground Plane).
+  5. Hệ thống tính toán ma trận chi phí tích hợp (khoảng cách mặt đất + độ tương đồng đặc trưng FastReID).
+  6. Thuật toán Union-Find kết hợp Hungarian Matching Re-ID phát hiện ra đối tượng L2 ở Cam 2 chính là đối tượng L1 ở Cam 1.
+  7. Hệ thống khóa tĩnh ID toàn cục và gán chung một Global ID (ví dụ: G5) cho cả hai vết theo dõi.
+- Giá trị mang lại: Xóa bỏ hiện tượng mất dấu vết đối tượng khi đổi camera giám sát.
+
+UC-1.2: Tự động khôi phục danh tính sau khi bị che khuất ngắn hạn (Local ID Recovery / Re-ID)
+- Tác nhân: Lõi xử lý SCT (Single Camera Tracking), InMemGallery.
+- Mô tả: Khôi phục lại chính xác ID của đối tượng khi bị che khuất tạm thời bởi vật cản (cột nhà, bức tường, biển quảng cáo) hoặc bởi đối tượng khác đi cắt ngang qua.
+- Quy trình:
+  1. Đối tượng đang có ID là L3 di chuyển và bị che khuất hoàn toàn.
+  2. Bộ theo dõi 2D (SORT/OcSORT) mất dấu vết, đưa L3 vào trạng thái "LOST".
+  3. Sau vài giây, đối tượng xuất hiện trở lại tại một vị trí lân cận.
+  4. Bộ phát hiện phát ra Bounding Box mới, SORT gán một Local ID tạm thời khác.
+  5. InMemGallery kích hoạt Re-ID so khớp đặc trưng Cosine giữa đối tượng mới xuất hiện với danh sách các vết đang ở trạng thái "LOST".
+  6. Nếu khoảng cách đặc trưng nhỏ hơn ngưỡng cho phép (Appearance Threshold), đối tượng được tái kết nối về lại ID L3 và chuyển trạng thái về "ACTIVE".
+- Giá trị mang lại: Giảm thiểu tối đa hiện tượng nhảy ID mới (ID fragmentation) trong môi trường đông người, nhiều vật cản.
+
+UC-1.3: Chiếu tọa độ mặt đất dựa trên Homography (Homography-Based Ground Projection)
+- Tác nhân: Lõi hiệu chuẩn Camera (CameraCalibration).
+- Mô tả: Ánh xạ tọa độ 2D của điểm chân đối tượng trên ảnh camera thành tọa độ thực tế 2D/3D trên mặt sàn chung của tòa nhà/khu vực.
+- Quy trình:
+  1. Hệ thống lấy tọa độ chân Bounding Box: x_foot = (x1 + x2)/2, y_foot = y2.
+  2. Hệ thống áp dụng ma trận Homography nghịch đảo (H_inv) được cấu hình riêng cho camera đó:
+     P_world = H_inv * P_foot.
+  3. Thu được tọa độ thực (mét) trên bản đồ phẳng của khu vực giám sát.
+- Giá trị mang lại: Cung cấp dữ liệu vị trí vật lý tuyệt đối để tính toán khoảng cách địa lý giữa các người đi bộ, thay vì khoảng cách pixel trên ảnh 2D bị bóp méo do phối cảnh góc nghiêng.
+
+UC-1.4: Làm mịn đặc trưng động bằng EMA (EMA Feature Update & Visual Drift Handling)
+- Tác nhân: GlobalTrackManager, SingleTrackManager.
+- Mô tả: Tự động cập nhật hồ sơ đặc trưng ngoại hình của đối tượng theo thời gian thực để thích ứng với sự thay đổi của ánh sáng, góc chiếu hoặc tư thế đi bộ.
+- Quy trình:
+  1. Đối tượng di chuyển từ vùng tối sang vùng sáng trong sảnh.
+  2. Đặc trưng trích xuất mới (FastReID) thay đổi nhẹ so với đặc trưng cũ lưu trong bộ nhớ.
+  3. Hệ thống áp dụng công thức làm mịn số mũ (Exponential Moving Average):
+     f_smooth = (1 - alpha) * f_old + alpha * f_new.
+  4. Đặc trưng đại diện của vết được cập nhật mượt mà, giúp chống trôi ngoại hình (appearance drift) mà không cần lưu trữ toàn bộ ảnh thô gây tốn RAM.
+- Giá trị mang lại: Tăng độ chính xác Re-ID khi đối tượng di chuyển liên tục trong thời gian dài dưới các điều kiện ánh sáng khác nhau.
+
+
+--------------------------------------------------------------------------------
+PHẦN 2: NHÓM USE CASES NGHIỆP VỤ & ỨNG DỤNG THỰC TẾ (BUSINESS & SURVEILLANCE APPS)
+--------------------------------------------------------------------------------
+
+UC-2.1: Bản đồ hóa hành trình khách hàng trong siêu thị (Customer Journey Mapping in Retail)
+- Tác nhân: Quản lý cửa hàng, Chuyên viên phân tích hành vi.
+- Mô tả: Phân tích lộ trình mua sắm của khách hàng từ lúc bước vào cửa, đi qua các gian hàng, dừng chân ở quầy kệ nào lâu nhất, cho đến khi ra quầy thanh toán.
+- Quy trình:
+  1. Khách hàng bước vào sảnh siêu thị (nhận Global ID G12).
+  2. G12 được theo dõi qua Cam 1 (Lối vào), Cam 3 (Khu rau quả), Cam 7 (Khu sữa).
+  3. Hệ thống ghi lại toàn bộ tọa độ thế giới (P_world) kèm nhãn thời gian thực.
+  4. Xuất ra báo cáo dạng bản đồ nhiệt (Heatmap) về các khu vực khách hàng tập trung đông nhất (Hot zones) và thời gian tương tác trung bình tại mỗi quầy kệ (Dwell time).
+- Bảo mật: Hoàn toàn bảo vệ quyền riêng tư cá nhân vì hệ thống chỉ lưu mã hóa đặc trưng ngoại hình 512 chiều, không cần nhận diện khuôn mặt sinh trắc học và không lưu trữ hình ảnh nhạy cảm lâu dài.
+
+UC-2.2: Giám sát an ninh tòa nhà doanh nghiệp & Cảnh báo bám đuôi (Intruder & Tailgating Detection)
+- Tác nhân: Nhân viên An ninh, Hệ thống Cảnh báo tự động.
+- Mô tả: Phát hiện người lạ thâm nhập trái phép vào khu vực hạn chế hoặc hành vi "bám đuôi" (tailgating - hai người đi qua cửa bảo mật nhưng chỉ có một người quẹt thẻ).
+- Quy trình:
+  1. Camera an ninh tại cửa quét và theo dõi đối tượng bằng thuật toán MCT.
+  2. Phát hiện hai Bounding Box riêng biệt (Global ID G20 và G21) đi rất sát nhau qua cửa kiểm soát nhưng đầu đọc thẻ chỉ nhận được một tín hiệu xác thực hợp lệ.
+  3. Hệ thống gửi cảnh báo khẩn cấp đến phòng trực ban an ninh kèm theo tọa độ thực tế của hai đối tượng trên sơ đồ tòa nhà.
+  4. Nhân viên an ninh có thể truy vết thời gian thực xem đối tượng bám đuôi đang đi về phía phòng ban nào qua mạng lưới camera đa điểm.
+
+UC-2.3: Giám sát mật độ và điều phối đám đông công cộng (Smart Cities & Pedestrian Density Control)
+- Tác nhân: Đơn vị quản lý đô thị, Ban quản lý nhà ga/sân bay.
+- Mô tả: Đo lường lưu lượng hành khách đi bộ tại các nút thắt cổ chai (ví dụ: lối lên cầu thang cuốn nhà ga, cửa soát vé) để cảnh báo ùn tắc hoặc điều phối dòng người.
+- Quy trình:
+  1. Hệ thống chạy MCT trên các cụm camera giám sát lối đi hành lang sảnh chính nhà ga.
+  2. Liên tục đếm số lượng Global ID đang hoạt động trong từng vùng định nghĩa (Zone-of-Interest).
+  3. Nếu mật độ người trên một mét vuông vượt ngưỡng an toàn (ví dụ: > 3 người/m2), hệ thống tự động kích hoạt cảnh báo ùn tắc.
+  4. Đưa ra khuyến nghị điều phối phân làn hành khách sang các cửa kiểm soát lân cận đang trống.
+
+
+--------------------------------------------------------------------------------
+PHẦN 3: NHÓM USE CASES QUẢN TRỊ & ĐIỀU HÀNH API (SYSTEM OPERATIONS & INTEGRATION)
+--------------------------------------------------------------------------------
+
+UC-3.1: Phát luồng video giám sát thời gian thực lên Dashboard (Live Stream Visual Grid Broadcasting)
+- Tác nhân: Lập trình viên Frontend, Người vận hành hệ thống.
+- Mô tả: Truyền phát luồng video ghép lưới (Visual Grid) hiển thị tất cả các camera đang chạy kèm theo các hộp Bounding Box và nhãn ID động lên giao diện web thời gian thực.
+- Quy trình:
+  1. Hệ thống gom các khung ảnh đã được chú thích (annotated frames) từ các worker camera.
+  2. Hàm `draw_grid` ghép nối các camera thành một khung hình ma trận (lưới 2x2 hoặc 3x3).
+  3. Backend phát luồng video nén chất lượng cao (MJPEG stream hoặc qua WebSocket) trực tiếp tới trình duyệt người dùng.
+- Giá trị mang lại: Giúp người vận hành ngồi tại trung tâm điều khiển có một cái nhìn trực quan toàn diện nhất về luồng di chuyển của các đối tượng trong khu vực.
+
+UC-3.2: Xuất dữ liệu vết định dạng chuẩn MOT15 (MOT15 Historical Data Export)
+- Tác nhân: Nhà nghiên cứu khoa học dữ liệu, Hệ thống kiểm thử chất lượng vết.
+- Mô tả: Tự động xuất kết quả theo dõi thành các file text (.txt) chuẩn định dạng quốc tế MOT15 để phục vụ việc đánh giá hiệu năng thuật toán (TrackEval) hoặc lưu trữ lịch sử kiểm toán.
+- Quy trình:
+  1. Kết thúc ca làm việc hoặc kết thúc chạy session, hệ thống đóng các luồng ghi file.
+  2. Xuất ra thư mục outputs/txt các file dạng: `cam<camera_id>_mct.txt`.
+  3. Mỗi dòng ghi chuẩn định dạng: `<frame_id>,<global_id>,<bb_left>,<bb_top>,<bb_width>,<bb_height>,1,-1,-1,-1`.
+- Giá trị mang lại: Giúp dễ dàng nhập dữ liệu vết vào các công cụ chấm điểm học máy (như TrackEval) để tính toán các chỉ số MOTA, MOTP, IDF1 chính xác.
+
+UC-3.3: Thay đổi cấu hình thuật toán nóng không cần khởi động lại (Hot-Reload Configuration API)
+- Tác nhân: Kỹ sư hệ thống (System Administrator).
+- Mô tả: Điều chỉnh các tham số thuật toán như ngưỡng khoảng cách (Combined Threshold), ngưỡng Re-ID, hệ số làm mịn EMA trực tiếp qua API và áp dụng ngay lập tức mà không cần tắt ứng dụng đang chạy.
+- Quy trình:
+  1. Hệ thống đang chạy giám sát. Kỹ sư phát hiện môi trường ánh sáng thay đổi làm tăng khoảng cách Cosine ngoại hình.
+  2. Kỹ sư gửi yêu cầu PATCH API để nâng ngưỡng `visual_gate` từ 0.55 lên 0.62.
+  3. File cấu hình `mct_config.yaml` được ghi đè, bộ nhớ đệm cập nhật tham số mới ngay trong vòng lặp frame kế tiếp.
+  4. Hệ thống tự động thích ứng với cấu hình mới mà không làm gián đoạn luồng video trực tuyến.
+
+UC-3.4: Lưu trữ Snapshot đám mây trên MinIO & Truy vấn Re-ID nguội (Cloud MinIO Snapshots & Cold Re-ID Search)
+- Tác nhân: Quản trị viên An ninh, Hệ thống Lưu trữ Đám mây.
+- Mô tả: Tự động lưu trữ các bức ảnh cắt nhỏ (person crop snapshots) của đối tượng lên kho lưu trữ đối tượng MinIO S3-compliant và cho phép tải lên một ảnh bất kỳ để truy tìm hành trình lịch sử của người đó.
+- Quy trình:
+  1. Khi một vết đối tượng được xác nhận (Promoted to ACTIVE), hệ thống cắt ảnh chứa Bounding Box của đối tượng.
+  2. Tải ảnh lên bucket của MinIO thông qua giao thức S3.
+  3. Trích xuất đặc trưng vector lưu vào cơ sở dữ liệu Postgres (sử dụng pgvector).
+  4. Khi cần điều tra an ninh, quản trị viên tải lên ảnh một nghi phạm.
+  5. Hệ thống trích xuất vector ảnh tải lên, thực hiện tìm kiếm so khớp Cosine tương đồng trên pgvector.
+  6. Trả về toàn bộ lịch sử di chuyển (thời gian, camera, tọa độ cụ thể) của nghi phạm đó trong quá khứ.
+================================================================================

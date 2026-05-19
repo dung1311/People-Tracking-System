@@ -32,11 +32,17 @@ import numpy as np
 import yaml
 from scipy.optimize import linear_sum_assignment
 
-from modules.data_templates.mct_template import CameraCalibration
+from mct import UnionFind
+from mct.calibration import CameraCalibration
+from mct.distance import (
+    cosine_distance_matrix,
+    euclidean_distance_matrix,
+    l2_normalise_rows,
+    project_feet_to_world,
+)
 from modules.data_templates.sct_template import TrackInfo
-from modules.detector.factory import DetectorFactory
-from modules.track_manager.mct_track_manager import MCTTrackManager
-from modules.tracker_2D.factory import TrackerFactory
+from pipelines.camera_worker import CameraWorker
+from pipelines.mct_perf import build_optional_shared_models, get_mct_perf_flags
 from utils.vis import draw_grid
 
 logger = logging.getLogger(__name__)
@@ -64,30 +70,6 @@ MCT3_CONFIG = {
 # Helpers
 # -----------------------------------------------------------------------
 
-class _UnionFind:
-    __slots__ = ("parent", "rank")
-
-    def __init__(self, n: int):
-        self.parent = list(range(n))
-        self.rank = [0] * n
-
-    def find(self, x: int) -> int:
-        while self.parent[x] != x:
-            self.parent[x] = self.parent[self.parent[x]]
-            x = self.parent[x]
-        return x
-
-    def union(self, x: int, y: int) -> bool:
-        rx, ry = self.find(x), self.find(y)
-        if rx == ry:
-            return False
-        if self.rank[rx] < self.rank[ry]:
-            rx, ry = ry, rx
-        self.parent[ry] = rx
-        if self.rank[rx] == self.rank[ry]:
-            self.rank[rx] += 1
-        return True
-
 
 class _LostGlobalTrack:
     """Feature snapshot of a global track that is no longer visible."""
@@ -97,64 +79,6 @@ class _LostGlobalTrack:
         self.global_id = gid
         self.feature = feat.copy()
         self.lost_age = 0
-
-
-# -----------------------------------------------------------------------
-# Per-camera worker (uses MCTTrackManager)
-# -----------------------------------------------------------------------
-
-class _CameraWorker:
-    def __init__(self, cam_id: int, video_path: str, sct_config: dict):
-        from modules.pose_estimator.factory import PoseEstimatorFactory
-        self.cam_id = cam_id
-        self.cap = cv2.VideoCapture(video_path)
-        self.detector = DetectorFactory(sct_config["DETECTION"]).get_detector()
-        self.tracker = TrackerFactory(sct_config["TRACKING"]).get_tracker()
-        self.pe = PoseEstimatorFactory(sct_config["POSE_ESTIMATION"]).get_pose_estimator()
-        self.track_manager = MCTTrackManager(sct_config["TRACK_MANAGER"])
-        self._latest_frame: Optional[np.ndarray] = None
-        self._latest_tracks: List[TrackInfo] = []
-        self._frame_id = 0
-        self._stopped = False
-
-    def process_next_frame(self) -> bool:
-        ret, frame = self.cap.read()
-        if not ret:
-            self._stopped = True
-            return False
-        self._frame_id += 1
-        h, w = frame.shape[:2]
-        frame_info = {
-            "cam_id": self.cam_id,
-            "frame_id": self._frame_id,
-            "frame": frame,
-            "img_info": (h, w),
-            "img_size": (h, w),
-        }
-        bboxes = self.detector.detect(frame)
-        tracks = self.tracker.update(bboxes, frame_info)
-        
-        # Check full body on generated tracks
-        if len(tracks) > 0:
-            from utils.pose import is_full_body
-            track_boxes = [trk[:4] for trk in tracks]
-            kpts_scores = self.pe.detect(frame, track_boxes)
-            is_full_body_dict = {}
-            for i, trk in enumerate(tracks):
-                tracker_id = int(trk[4])
-                is_full_body_dict[tracker_id] = is_full_body(kpts_scores[i], confidence_threshold=0.5) if i < len(kpts_scores) else False
-            frame_info["is_full_body"] = is_full_body_dict
-            
-        self._latest_tracks = self.track_manager.process(tracks, frame_info)
-        self._latest_frame = frame
-        return True
-
-    @property
-    def stopped(self) -> bool:
-        return self._stopped
-
-    def release(self):
-        self.cap.release()
 
 
 # -----------------------------------------------------------------------
@@ -186,14 +110,30 @@ class MCTPipeline3:
         self._output_fps = out_cfg.get("fps", 25)
         self._draw_local = out_cfg.get("draw_local", True)
 
+        shared_models, enable_pose = get_mct_perf_flags(cfg)
+        shared_detector, shared_embedder, shared_pose = build_optional_shared_models(
+            sct_config,
+            shared_models=shared_models,
+            enable_pose_full_body=enable_pose,
+        )
+
         cameras = cfg["CAMERAS"]
         self.H_invs: Dict[int, np.ndarray] = {}
-        self.workers: Dict[int, _CameraWorker] = {}
+        self.workers: Dict[int, CameraWorker] = {}
         for cam_id_str, cam_cfg in cameras.items():
             cid = int(cam_id_str)
             cal = CameraCalibration.load_from_json(cam_cfg["calibration"], cid)
             self.H_invs[cid] = cal.H_inv
-            self.workers[cid] = _CameraWorker(cid, cam_cfg["video"], sct_config)
+            self.workers[cid] = CameraWorker(
+                cid,
+                cam_cfg["video"],
+                sct_config,
+                detector=shared_detector,
+                pose_estimator=shared_pose,
+                embedder=shared_embedder,
+                enable_pose_full_body=enable_pose,
+                use_mct_track_manager=True,
+            )
 
         # Global ID bookkeeping
         self._next_gid = 1
@@ -206,41 +146,22 @@ class MCTPipeline3:
         self.cam_ids_sorted = sorted(self.H_invs)
         self.cam_names = [f"Cam {c}" for c in self.cam_ids_sorted]
 
-    # ---- vectorised math (same as v2) ----
+    # ---- vectorised math (``mct.distance``) ----
 
     def _project_feet(self, feet: np.ndarray, cids: np.ndarray) -> np.ndarray:
-        N = len(feet)
-        pts_h = np.empty((N, 3), dtype=np.float64)
-        pts_h[:, :2] = feet
-        pts_h[:, 2] = 1.0
-        world = np.empty((N, 2), dtype=np.float64)
-        for cid, H_inv in self.H_invs.items():
-            mask = cids == cid
-            if not mask.any():
-                continue
-            w = (H_inv @ pts_h[mask].T).T
-            w /= w[:, 2:3]
-            world[mask] = w[:, :2]
-        return world
+        return project_feet_to_world(feet, cids, self.H_invs)
 
     @staticmethod
     def _cosine_dist(A: np.ndarray, B: np.ndarray) -> np.ndarray:
-        sim = A @ B.T
-        np.clip(sim, -1.0, 1.0, out=sim)
-        return 1.0 - sim
+        return cosine_distance_matrix(A, B)
 
     @staticmethod
     def _euclidean_dist(pts: np.ndarray) -> np.ndarray:
-        sq = np.sum(pts ** 2, axis=1)
-        d2 = sq[:, None] + sq[None, :] - 2.0 * (pts @ pts.T)
-        np.maximum(d2, 0.0, out=d2)
-        return np.sqrt(d2)
+        return euclidean_distance_matrix(pts)
 
     @staticmethod
     def _l2(feats: np.ndarray) -> np.ndarray:
-        norms = np.linalg.norm(feats, axis=1, keepdims=True)
-        norms[norms == 0] = 1.0
-        return feats / norms
+        return l2_normalise_rows(feats)
 
     # ---- allocate ----
 
@@ -308,7 +229,7 @@ class MCTPipeline3:
             ei, ej, ec2 = ui[valid], uj[valid], ec[valid]
             order = np.argsort(ec2)
             ei, ej = ei[order], ej[order]
-            uf = _UnionFind(N)
+            uf = UnionFind(N)
             comp_cams: List[set] = [{int(cam_arr[i])} for i in range(N)]
             for a, b in zip(ei, ej):
                 ra, rb = uf.find(int(a)), uf.find(int(b))
@@ -475,9 +396,9 @@ class MCTPipeline3:
                 per_cam: Dict[int, List[TrackInfo]] = {}
                 frames: Dict[int, np.ndarray] = {}
                 for cid, w in self.workers.items():
-                    if w._latest_frame is not None:
-                        frames[cid] = w._latest_frame
-                        per_cam[cid] = list(w._latest_tracks)
+                    if w.latest_frame is not None:
+                        frames[cid] = w.latest_frame
+                        per_cam[cid] = list(w.latest_tracks)
 
                 # Cluster + assign global IDs
                 per_cam_map = self._process_frame(per_cam, frame_count)
@@ -603,9 +524,21 @@ class MCTPipeline3:
             x1, y1, x2, y2 = map(int, t.bbox)
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-            cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw, y1), color, -1)
+            
+            # Auto-adjust label position to prevent clipping at the top boundary of the image
+            bg_h = th + 6
+            if y1 - bg_h >= 0:
+                bg_y1 = y1 - bg_h
+                bg_y2 = y1
+                text_y = y1 - 4
+            else:
+                bg_y1 = y1
+                bg_y2 = y1 + bg_h
+                text_y = y1 + th + 2
+
+            cv2.rectangle(frame, (x1, bg_y1), (x1 + tw, bg_y2), color, -1)
             cv2.putText(
-                frame, label, (x1 + 2, y1 - 4),
+                frame, label, (x1 + 2, text_y),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
             )
 

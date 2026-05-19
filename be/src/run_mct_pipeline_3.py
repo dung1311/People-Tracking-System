@@ -1,6 +1,16 @@
 """Run MCT Pipeline v3 on cam64/cam65/cam66."""
 
 import logging
+import sys
+
+try:
+    import mct  # noqa: F401
+except ImportError:
+    print(
+        "Missing package ``mct``. Install from repo root: pip install -e ./MCT",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 from utils.load_config import load_config
 from pipelines.mct_pipeline_3 import MCTPipeline3
@@ -12,7 +22,7 @@ logging.basicConfig(
 
 def main():
     sct_config = load_config("configs/sct_config.yaml")
-    mct_config_path = "configs/mct_config.yaml"
+    mct_config_path = "configs/pipeline3.yaml"
     pipeline = MCTPipeline3(
         sct_config=sct_config,
         mct_config_path=mct_config_path,

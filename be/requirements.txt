@@ -15,3 +15,15 @@ tqdm
 pytest
 pgvector
 alembic
+# Auth
+python-jose[cryptography]
+passlib[bcrypt]
+# MinIO
+minio
+# Config
+pyyaml
+python-dotenv
+# WebSocket
+websockets
+# HTTP client (optional, for tests)
+httpx

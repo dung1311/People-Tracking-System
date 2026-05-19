@@ -1,14 +1,39 @@
 services:
   db:
     image: pgvector/pgvector:pg16
+    container_name: datn-db
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: SCT
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./be/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d SCT"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: datn-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Console
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: 
@@ -18,14 +43,25 @@ services:
       - ./be/data:/app/data
       - ./be/configs:/app/configs
       - ./be/logs:/app/logs
-      # Map weights if needed
-      - ./be/yolo11n.pt:/app/yolo11n.pt
+      - ./be/weights:/app/weights
     environment:
-      DATABASE_URL: postgresql://user:password@db:5432/db
+      DATABASE_URL: postgresql://admin:admin123@db:5432/SCT
+      SECRET_KEY: change-me-in-production-please
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_SECURE: "false"
+      MINIO_BUCKET: tracking
+      DEFAULT_ADMIN_USERNAME: admin
+      DEFAULT_ADMIN_PASSWORD: admin123
+      DEFAULT_ADMIN_EMAIL: admin@localhost
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
     
     # --- GPU CONFIGURATION ---
     # On the machine with GPU, uncomment the following 'deploy' section:
@@ -37,14 +73,15 @@ services:
     #           count: 1
     #           capabilities: [gpu]
 
-  frontend:
-    build:
-      context: ./fe
-    container_name: datn-frontend
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
+  # frontend:
+  #   build:
+  #     context: ./fe
+  #   container_name: datn-frontend
+  #   ports:
+  #     - "80:80"
+  #   depends_on:
+  #     - backend
 
 volumes:
   postgres_data:
+  minio_data:

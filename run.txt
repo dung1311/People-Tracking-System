@@ -8,11 +8,11 @@ PYTHONPATH=src python -m utils.mct_debug \
   --video data/videos/cam64.mp4 data/videos/cam65.mp4 data/videos/cam66.mp4
 
 cd /home/dungnt/workspaces/HUST/People-Tracking-System/be && PYTHONPATH=src conda run -n DATN python -m utils.mct_debug compare \
-  --frame 120 \
-  --pairs 27:66 4:64 \
-  --txt outputs/txt/cam64_mct.txt outputs/txt/cam65_mct.txt outputs/txt/cam66_mct.txt \
-  --calib data/cameras/cam64.json data/cameras/cam65.json data/cameras/cam66.json \
-  --video data/videos/cam64.mp4 data/videos/cam65.mp4 data/videos/cam66.mp4 2>&1
+  --frame 4 \
+  --pairs 1:62 1:64 1:65 1:66 \
+  --txt outputs/txt/cam62_mct.txt outputs/txt/cam64_mct.txt outputs/txt/cam65_mct.txt outputs/txt/cam66_mct.txt \
+  --calib data/cameras/cam62.json data/cameras/cam64.json data/cameras/cam65.json data/cameras/cam66.json \
+  --video data/videos/cam62.mp4 data/videos/cam64.mp4 data/videos/cam65.mp4 data/videos/cam66.mp4 2>&1
 
 PYTHONPATH=src python -m utils.mct_debug fullbody \
   --frame 18 \

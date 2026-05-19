@@ -1,0 +1,119 @@
+================================================================================
+         HỆ THỐNG THEO DÕI ĐỐI TƯỢNG ĐA CAMERA (PEOPLE-TRACKING-SYSTEM)
+       ĐẶC TẢ CHI TIẾT CÁC CHỨC NĂNG GIAO DIỆN WEB (WEB UI USE CASES & FEATURES)
+================================================================================
+
+Tài liệu này đặc tả chi tiết toàn bộ các chức năng và trường hợp sử dụng trên Giao diện Web (Web User Interface & Dashboard) dành cho quản trị viên, người vận hành và giám sát viên của hệ thống People-Tracking-System.
+
+--------------------------------------------------------------------------------
+PHÂN HỆ 1: ĐĂNG NHẬP & PHÂN QUYỀN HỆ THỐNG (AUTHENTICATION & RBAC)
+--------------------------------------------------------------------------------
+
+UC-W1.1: Đăng nhập & Đăng xuất (User Authentication)
+- Mô tả: Cho phép người dùng truy cập an toàn vào hệ thống thông qua tài khoản và mật khẩu được mã hóa, cấp mã xác thực JWT token.
+- Giao diện gồm: Form đăng nhập, tự động lưu session, bảo vệ các router nội bộ bằng Middleware.
+
+UC-W1.2: Phân quyền vai trò người dùng (Role-Based Access Control - RBAC)
+- Mô tả: Hệ thống phân chia thành 3 nhóm quyền chính nhằm đảm bảo an ninh vận hành:
+  1. Quản trị viên (Admin): Toàn quyền cấu hình camera, thiết lập thuật toán Re-ID, quản lý tài khoản người dùng khác.
+  2. Người vận hành (Operator): Khởi chạy/dừng các phiên theo dõi (MCT sessions), quản lý dữ liệu xuất bản, cấu hình hiệu chuẩn camera.
+  3. Giám sát viên (Viewer): Chỉ có quyền xem luồng trực tuyến, tìm kiếm lịch sử vết đối tượng và xem báo cáo.
+
+
+--------------------------------------------------------------------------------
+PHÂN HỆ 2: BẢNG ĐIỀU KHIỂN GIÁM SÁT TRỰC TUYẾN (LIVE MONITORING DASHBOARD)
+--------------------------------------------------------------------------------
+
+UC-W2.1: Lưới hiển thị luồng Video đa kênh trực tiếp (Live Stream Video Grid)
+- Giao diện: Màn hình ghép lưới (Grid layout) hiển thị đồng thời luồng video của nhiều camera (2x2, 3x3).
+- Chức năng chi tiết:
+  * Tự động điều chỉnh kích thước khung hình tương thích mọi độ phân giải.
+  * Hiển thị Bounding Box bao quanh người đi kèm nhãn ghi mã số: "Llocal_id | Gglobal_id" (ví dụ: L8 | G21).
+  * Bộ nhãn tự động đảo ngược hướng vào bên trong hộp chữ nhật khi đối tượng đi sát mép trên cùng của khung ảnh (chống mất nhãn).
+  * Nút công tắc (Toggle Switch) cho phép bật/tắt hiển thị Bounding Box hoặc bật/tắt nhãn Local ID để tránh rối mắt.
+
+UC-W2.2: Sơ đồ di chuyển 2D phẳng thời gian thực (Live 2D Floor Plan Tracking)
+- Giao diện: Bản đồ phẳng (2D Layout) mô phỏng mặt bằng tòa nhà hoặc khu vực siêu thị đặt bên cạnh luồng video.
+- Chức năng chi tiết:
+  * Hiển thị vị trí thực của từng đối tượng dưới dạng các Avatar tròn có ghi số Global ID di chuyển thời gian thực trên bản đồ phẳng.
+  * Tọa độ các Avatar được tính toán tự động từ phép chiếu Homography của các camera tương ứng.
+  * Khi đối tượng di chuyển từ vùng camera 1 sang vùng camera 2, Avatar di chuyển mượt mà trên bản đồ không bị ngắt quãng.
+
+UC-W2.3: Bảng số liệu thống kê & Chỉ số hoạt động (Live System Telemetry & Statistics)
+- Giao diện: Các thẻ chỉ số (KPI Cards) hiển thị ở góc màn hình.
+- Chức năng chi tiết:
+  * Đếm tổng số người đang hiện diện thời gian thực (Active Targets).
+  * Hiển thị tốc độ xử lý khung hình (FPS) trung bình của toàn hệ thống.
+  * Trạng thái kết nối của từng camera (Connected/Disconnected) bằng đèn báo xanh/đỏ.
+
+
+--------------------------------------------------------------------------------
+PHÂN HỆ 3: QUẢN LÝ THIẾT BỊ CAMERA & HIỆU CHUẨN ĐỒNG DẠNG (CAMERA & CALIBRATION)
+--------------------------------------------------------------------------------
+
+UC-W3.1: Quản lý Danh mục Thiết bị Camera (Camera Devices CRUD)
+- Chức năng: Thêm, sửa, xóa các luồng camera giám sát trong hệ thống.
+- Giao diện gồm: Form nhập tên camera, đường dẫn RTSP Stream URL, độ phân giải gốc, tần suất lấy mẫu khung hình (FPS) và mô tả vị trí lắp đặt.
+
+UC-W3.2: Bộ công cụ Hiệu chuẩn Homography tương tác (Interactive Calibration Tool)
+- Giao diện: Trình hiển thị ảnh chụp (Snapshot) từ luồng Camera trực tiếp bên cạnh Sơ đồ mặt bằng 2D của tòa nhà.
+- Chức năng chi tiết:
+  * Cho phép người vận hành nhấp chuột chọn tối thiểu 4 điểm tham chiếu trên ảnh camera (ví dụ: 4 góc gạch sàn nhà).
+  * Nhấp chuột chọn 4 điểm tương ứng tương ứng trên Sơ đồ mặt bằng 2D.
+  * Hệ thống tự động tính toán ma trận đồng dạng nghịch đảo (Inverse Homography Matrix H_inv).
+  * Cho phép bấm "Test Projection" để kiểm tra độ sai lệch tọa độ trước khi lưu chính thức vào cơ sở dữ liệu.
+
+
+--------------------------------------------------------------------------------
+PHÂN HỆ 4: TRUY VẾT & TÌM KIẾM LỊCH SỬ ĐỐI TƯỢNG (HISTORICAL SEARCH & REPLAY)
+--------------------------------------------------------------------------------
+
+UC-W4.1: Tìm kiếm đối tượng bằng ảnh chụp (Cold Re-ID Photo Search)
+- Giao diện: Khung tải lên tệp ảnh (Drag-and-Drop Image Uploader).
+- Chức năng chi tiết:
+  * Người dùng tải lên ảnh chụp một người (hoặc nghi phạm).
+  * Hệ thống trích xuất đặc trưng visual feature (FastReID) của ảnh.
+  * Thực hiện truy vấn tìm kiếm Vector (Cosine Similarity) trên cơ sở dữ liệu Postgres pgvector.
+  * Trả về danh sách các Global ID có độ tương đồng ngoại hình lớn nhất kèm theo tỷ lệ phần trăm khớp (Matching Score).
+
+UC-W4.2: Tái hiện hành trình lịch sử của đối tượng (Historical Journey Replay)
+- Giao diện: Trình phát video kết hợp bản đồ hành trình lịch sử.
+- Chức năng chi tiết:
+  * Sau khi chọn một Global ID (ví dụ: G5) và khoảng thời gian cần điều tra.
+  * Hệ thống vẽ đường nối (Path trajectory) biểu diễn toàn bộ lộ trình đối tượng G5 đã di chuyển trên bản đồ 2D.
+  * Cung cấp nút phát (Play timeline): Khi dòng thời gian chạy, Avatar của G5 sẽ di chuyển dọc theo lộ trình đã đi.
+  * Cửa sổ video bên cạnh sẽ tự động chuyển đổi sang camera ghi nhận đối tượng G5 tại đúng mốc thời gian đó (tự động cắt ghép và phát các clip bằng chứng ngắn từ MinIO).
+
+UC-W4.3: Xuất báo cáo vết & Dữ liệu MOT15 (Audit Trail & MOT15 Export)
+- Chức năng: Xuất lịch sử vết ra file báo cáo Excel (chứa danh sách thời gian vào/ra, các camera đối tượng đã đi qua) hoặc tải file .txt chuẩn MOT15 để phục vụ việc chia sẻ dữ liệu nghiên cứu.
+
+
+--------------------------------------------------------------------------------
+PHÂN HỆ 5: QUẢN LÝ PHIÊN THEO DÕI (MCT TRACKING SESSION MANAGEMENT)
+--------------------------------------------------------------------------------
+
+UC-W5.1: Thiết lập & Điều khiển Phiên theo dõi (Session Control Panel)
+- Chức năng: Quản lý vòng đời chạy của ứng dụng.
+- Giao diện gồm:
+  * Bảng điều khiển: Nút "Bắt đầu Phiên" (Start Session), "Tạm dừng" (Pause), và "Dừng hoàn toàn" (Stop).
+  * Cho phép chọn các camera tham gia vào phiên theo dõi hiện tại.
+  * Tùy chọn bật/tắt ghi video lưu trữ (Enable Recording) phục vụ xem lại.
+
+UC-W5.2: Trung tâm thông báo cảnh báo thời gian thực (Live Alert Notification Center)
+- Giao diện: Hộp thông báo pop-up nổi lên bên góc màn hình kèm tiếng chuông cảnh báo nhẹ.
+- Chức năng chi tiết:
+  * Cảnh báo bám đuôi (Tailgating): Khi phát hiện 2 ID đi quá gần nhau qua cửa an ninh.
+  * Cảnh báo xâm nhập vùng cấm (Restricted Zone Entry): Khi phát hiện Avatar di chuyển vào vùng màu đỏ khoanh sẵn trên bản đồ 2D phẳng.
+
+
+--------------------------------------------------------------------------------
+PHÂN HỆ 6: CẤU HÌNH THAM SỐ THUẬT TOÁN (ALGORITHM PARAMETERS SYSTEM PANEL)
+--------------------------------------------------------------------------------
+
+UC-W6.1: Tùy chỉnh trọng số & Ngưỡng quyết định (Algorithm Weights Config Panel)
+- Giao diện: Hệ thống các thanh trượt (Sliders) và hộp nhập số trực quan.
+- Chức năng chi tiết:
+  * Điều chỉnh tỷ lệ trọng số phối hợp giữa khoảng cách Homography và khoảng cách visual đặc trưng (weights.homography vs weights.visual).
+  * Điều chỉnh ngưỡng kết hợp (combined threshold), ngưỡng Re-ID, và tuổi thọ vết tối đa (max_lost_age).
+  * Nút "Áp dụng nhanh" (Hot reload): Lưu trực tiếp cấu hình xuống file yaml ở backend và thay đổi ngay lập tức hoạt động của luồng xử lý AI.
+================================================================================

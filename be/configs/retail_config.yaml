@@ -1,0 +1,48 @@
+DETECTION:
+  name: yolov11
+  yolov11:
+    model_path: weights/yolo11x.pt
+    task: detect
+    imgsz: 640
+    conf_thres: 0.3
+    iou_thres: 0.7
+    device: cuda
+    classes: 0
+    max_det: 300
+
+POSE_ESTIMATION:
+  name: rtmpose
+  rtmpose:
+    device: cuda
+    model_path: weights/rtmpose-l_256x192/end2end.onnx
+    input_size: [192, 256]
+
+TRACKING:
+  name: sort
+  sort:
+    max_age: 10
+    min_hits: 3
+    iou_threshold: 0.3
+  ocsort:
+    det_thresh: 0.4
+    max_age: 30
+    min_hits: 3
+    iou_threshold: 0.3
+    delta_t: 3
+    asso_func: iou
+    inertia: 0.2
+    use_byte: False
+
+TRACK_MANAGER:
+  is_join_track: True
+  smooth_factor: 0.1
+  appearance_threshold: 0.5
+  GALLERY:
+    max_live_time: 24000 # 5 mins
+    min_hits: 3
+    max_features: 50
+  MATCHING:
+    distance_threshold: 0.5
+  EMBEDDING:
+    name: fastreid
+    fastreid: configs/osnet-ain_x1.0-ibn_512_256x192_ccdmmps.yaml

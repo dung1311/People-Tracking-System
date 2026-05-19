@@ -1,78 +1,73 @@
-import os
-import logging
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from fastapi.responses import StreamingResponse
+"""Video streaming endpoint for single camera preview."""
 
-from utils.load_config import load_config
-from pipelines.sct_pipeline import SCTPipeline
-from models.camera import Camera
+import logging
+import os
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from sqlmodel import Session
+
+from api.v1.deps import get_current_user
+from core.stream_manager import stream_manager
 from database.session import get_session
-from sqlmodel import select
+from models.camera import Camera
+from models.user import User
+from utils.load_config import load_config
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Config is now loaded dynamically per camera
 
 @router.get("/camera/{camera_id}")
-async def stream_camera(camera_id: int):
-    """
-    Stream video from a specific camera ID.
-    This starts a new pipeline instance for the stream.
-    """
-    # 1. Get Camera details from DB (to get source URL)
-    # Since we can't inject session easily into StreamingResponse without context managing,
-    # we'll do a quick lookup.
-    session_gen = get_session()
-    session = next(session_gen)
-    try:
-        camera = session.get(Camera, camera_id)
-        if not camera:
-            raise HTTPException(status_code=404, detail="Camera not found")
-        
-        # Determine source. If it's an integer string, convert to int (webcam)
-        video_source = camera.source
-        if video_source.isdigit():
-            video_source = int(video_source)
-            
-    except Exception as e:
-        logger.error(f"Error fetching camera: {e}")
-        raise HTTPException(status_code=500, detail="Database error")
-    finally:
-        session.close()
+async def stream_camera(
+    camera_id: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    """Stream video from a specific camera via MJPEG."""
+    camera = session.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
 
-    # 2. Load Config
-    # Default path if camera doesn't have one
-    config_path = camera.config_path if camera and camera.config_path else "configs/sct_config.yaml"
-    
-    # Resolve relative path if needed
+    source = camera.source_uri
+    if source.isdigit():
+        source = int(source)
+    elif not source.startswith("rtsp") and not os.path.isabs(source):
+        for candidate in [source, f"data/videos/{source}", f"../{source}"]:
+            if os.path.exists(candidate):
+                source = candidate
+                break
+
+    # If MinIO path, resolve
+    if isinstance(source, str) and source.startswith("videos/"):
+        from core.minio_client import get_minio
+
+        minio = get_minio()
+        tmp_path = f"data/session_tmp/stream_{camera_id}.mp4"
+        os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
+        try:
+            data = minio.get_file(source)
+            with open(tmp_path, "wb") as f:
+                f.write(data)
+            source = tmp_path
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch video: {e}")
+
+    # Load config
+    config_path = "configs/sct_config.yaml"
     if not os.path.exists(config_path):
-       # Try relative to cwd
-       config_path = os.path.join(os.getcwd(), config_path)
-       
+        config_path = os.path.join(os.getcwd(), config_path)
     if not os.path.exists(config_path):
-        # Fallback to default absolute check
-        default_path = os.path.join(os.getcwd(), "configs/sct_config.yaml")
-        if os.path.exists(default_path):
-             logger.warning(f"Config {config_path} not found. Using default.")
-             config_path = default_path
-        else:
-             logger.error(f"Config file not found at {config_path}")
-             raise HTTPException(status_code=500, detail=f"Configuration file not found: {config_path}")
-        
+        raise HTTPException(status_code=500, detail="SCT config not found")
+
     config = load_config(config_path)
-    
-    # 3. Initialize Pipeline
-    # Note: Creating a pipeline per request is heavy. 
-    # If multiple clients view the same cam, we should share the stream.
-    # But for now, we follow the user's request for a pipeline.
-    
-    # 3. Initialize Pipeline
-    input_config = {"video_path": video_source}
+
+    from pipelines.sct_pipeline import SCTPipeline
+
+    input_config = {"video_path": source}
     pipeline = SCTPipeline(config, input_config, camera_id)
-    
-    # 4. Stream
+
     return StreamingResponse(
         pipeline.stream_generator(),
-        media_type="multipart/x-mixed-replace; boundary=frame"
+        media_type="multipart/x-mixed-replace; boundary=frame",
     )

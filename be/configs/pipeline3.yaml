@@ -1,0 +1,41 @@
+MATCHING:
+  weights:
+    homography: 0.5
+    visual: 0.5
+
+  thresholds:
+    homography: 10.0       # normalisation cap (world-plane units)
+    visual_gate: 0.5       # hard gate: reject if cosine dist > this
+    homo_gate: 10.0        # hard gate: reject if world-plane dist > this
+    combined: 0.6          # clustering edge threshold (after gates pass)
+    reid: 0.4              # cosine distance for re-id against globals
+
+GLOBAL_TRACK:
+  max_lost_age: 300        # frames before removing a lost global track
+  feature_smooth: 0.1      # EMA factor for feature update
+
+CAMERAS:
+  64:
+    video: data/videos/full/cam64.mp4
+    calibration: data/cameras/cam64.json
+  # 65:
+  #   video: data/videos/full/cam65.mp4
+  #   calibration: data/cameras/cam65.json
+  66:
+    video: data/videos/full/cam66.mp4
+    calibration: data/cameras/cam66.json
+  # 62:
+  #   video: data/videos/full/cam62.mp4
+  #   calibration: data/cameras/cam62.json
+
+
+OUTPUT:
+  video: outputs/pipeline3.mp4
+  txt_dir: outputs/pipeline3
+  fps: 30
+  draw_local: False
+
+# Hiệu năng chung cho MCT pipeline 2 và 3 (fallback: MCT_PIPELINE3 nếu còn file cũ)
+MCT_PERFORMANCE:
+  shared_models: true
+  enable_pose_full_body: true

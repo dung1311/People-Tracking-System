@@ -4,7 +4,7 @@ DETECTION:
     model_path: weights/yolo11x.pt
     task: detect
     imgsz: 640
-    conf_thres: 0.5
+    conf_thres: 0.2
     iou_thres: 0.7
     device: cuda
     classes: 0
@@ -42,7 +42,7 @@ TRACK_MANAGER:
     min_hits: 3
     max_features: 50
   MATCHING:
-    distance_threshold: 0.4
+    distance_threshold: 0.6 #0.5
   EMBEDDING:
     name: fastreid
     fastreid: configs/osnet-ain_x1.0-ibn_512_256x192_ccdmmps.yaml

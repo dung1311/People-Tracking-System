@@ -1,143 +1,248 @@
-from typing import List
+"""Camera management endpoints with calibration and video upload."""
+
+import io
+import json
+import logging
 import os
+from datetime import datetime
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, File, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlmodel import Session, select
-import shutil
 
+from api.v1.deps import get_current_user, require_admin, require_operator
+from core.minio_client import get_minio, MinIOService
 from database.session import get_session
 from models.camera import Camera
-from models.track import Track
+from models.user import User
 from schemas.camera import CameraCreate, CameraRead, CameraUpdate
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
-@router.post("/", response_model=CameraRead)
-def create_camera(*, session: Session = Depends(get_session), camera: CameraCreate):
-    db_camera = Camera.from_orm(camera)
-    session.add(db_camera)
+
+# ── CRUD ──
+
+@router.post("/", response_model=CameraRead, status_code=201)
+def create_camera(
+    body: CameraCreate,
+    session: Session = Depends(get_session),
+    user: User = Depends(require_admin),
+):
+    camera = Camera(
+        **body.model_dump(),
+        created_by=user.id,
+    )
+    session.add(camera)
     session.commit()
-    session.refresh(db_camera)
-    return db_camera
+    session.refresh(camera)
+    return camera
+
 
 @router.get("/", response_model=List[CameraRead])
-def read_cameras(
+def list_cameras(
     *,
     session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
     offset: int = 0,
     limit: int = Query(default=100, le=100),
+    active_only: bool = False,
 ):
-    cameras = session.exec(select(Camera).offset(offset).limit(limit)).all()
+    query = select(Camera)
+    if active_only:
+        query = query.where(Camera.is_active == True)
+    cameras = session.exec(query.offset(offset).limit(limit)).all()
     return cameras
 
+
 @router.get("/{camera_id}", response_model=CameraRead)
-def read_camera(*, session: Session = Depends(get_session), camera_id: int):
+def get_camera(
+    camera_id: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
     camera = session.get(Camera, camera_id)
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
     return camera
 
+
 @router.patch("/{camera_id}", response_model=CameraRead)
 def update_camera(
-    *,
-    session: Session = Depends(get_session),
     camera_id: int,
-    camera: CameraUpdate,
+    body: CameraUpdate,
+    session: Session = Depends(get_session),
+    user: User = Depends(require_operator),
 ):
-    db_camera = session.get(Camera, camera_id)
-    if not db_camera:
-        raise HTTPException(status_code=404, detail="Camera not found")
-    
-    camera_data = camera.dict(exclude_unset=True)
-    for key, value in camera_data.items():
-        setattr(db_camera, key, value)
-        
-    session.add(db_camera)
-    session.commit()
-    session.refresh(db_camera)
-    return db_camera
-
-@router.delete("/{camera_id}")
-def delete_camera(*, session: Session = Depends(get_session), camera_id: int):
     camera = session.get(Camera, camera_id)
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
-    
-    
-    # Stop the pipeline first to prevent new insertions
-    from core.stream_manager import stream_manager
-    stream_manager.stop_pipeline(camera_id)
-    
-    # Cascade delete related records
-    # Using delete() statement is more efficient than fetching and iterating
-    from sqlalchemy import delete
+
+    update_data = body.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(camera, key, value)
+    camera.updated_at = datetime.utcnow()
+
+    session.add(camera)
+    session.commit()
+    session.refresh(camera)
+    return camera
+
+
+@router.delete("/{camera_id}")
+def delete_camera(
+    camera_id: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(require_admin),
+    minio: MinIOService = Depends(get_minio),
+):
+    camera = session.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    # Clean up MinIO files
+    try:
+        for obj in minio.list_files(prefix=f"cameras/{camera_id}/"):
+            minio.delete_file(obj)
+    except Exception as e:
+        logger.warning("Failed to clean MinIO files for camera %d: %s", camera_id, e)
+
+    # Cascade delete related DB records
+    from sqlalchemy import delete as sa_delete
+    from models.track import Track
     from models.video_segment import VideoSegment
-    
-    # Delete Tracks
-    session.exec(delete(Track).where(Track.camera_id == camera_id))
-    
-    # Delete Video Segments
-    session.exec(delete(VideoSegment).where(VideoSegment.camera_id == camera_id))
-        
+
+    session.exec(sa_delete(Track).where(Track.camera_id == camera_id))
+    session.exec(sa_delete(VideoSegment).where(VideoSegment.camera_id == camera_id))
     session.delete(camera)
     session.commit()
     return {"ok": True}
 
-@router.get("/{camera_id}/stream")
-async def stream_camera(
+
+# ── Calibration ──
+
+@router.post("/{camera_id}/calibration", response_model=CameraRead)
+async def upload_calibration(
     camera_id: int,
-    session: Session = Depends(get_session)
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    user: User = Depends(require_operator),
+    minio: MinIOService = Depends(get_minio),
+):
+    """Upload a camera calibration JSON file."""
+    camera = session.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    # Validate JSON
+    contents = await file.read()
+    try:
+        calib_data = json.loads(contents)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON file")
+
+    # Validate calibration structure
+    required_keys = {"camera projection matrix", "homography matrix"}
+    if not required_keys.issubset(calib_data.keys()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Calibration JSON must contain keys: {required_keys}",
+        )
+
+    # Upload to MinIO
+    object_name = f"calibrations/{camera_id}/calibration.json"
+    minio.upload_bytes(object_name, contents, content_type="application/json")
+
+    # Update camera record
+    camera.has_calibration = True
+    camera.calibration_path = object_name
+    camera.updated_at = datetime.utcnow()
+    session.add(camera)
+    session.commit()
+    session.refresh(camera)
+    return camera
+
+
+@router.get("/{camera_id}/calibration")
+def get_calibration(
+    camera_id: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+    minio: MinIOService = Depends(get_minio),
+):
+    """Download the calibration JSON for a camera."""
+    camera = session.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    if not camera.has_calibration or not camera.calibration_path:
+        raise HTTPException(status_code=404, detail="No calibration uploaded")
+
+    data = minio.get_file(camera.calibration_path)
+    return json.loads(data)
+
+
+@router.delete("/{camera_id}/calibration", response_model=CameraRead)
+def delete_calibration(
+    camera_id: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(require_admin),
+    minio: MinIOService = Depends(get_minio),
 ):
     camera = session.get(Camera, camera_id)
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
-    
-    from core.stream_manager import stream_manager
-    import cv2
-    from fastapi.responses import StreamingResponse
-    import io
 
-    # Check if source is valid (simple check)
-    source = camera.source
-    # Logic to resolve path similar to frames.py if needed, or trust stream_manager
-    # For now, let's duplicate the resolution logic or assume absolute/correct paths or StreamManager handles it.
-    # The StreamManager code I wrote just takes `source`.
-    # Let's do a quick fix for relative paths here as well if it's a file.
-    if source == "mct_demo.mp4" or (not source.startswith("rtsp") and not os.path.exists(source)):
-         # Try looking in expected places
-         if os.path.exists(f"../{source}"):
-             source = f"../{source}"
-         elif os.path.exists(f"../data/videos/{os.path.basename(source)}"):
-             source = f"../data/videos/{os.path.basename(source)}"
-
-    pipeline = stream_manager.create_pipeline(camera_id, source)
-    
-    def frame_generator():
-        # pipeline.run_generator() yields frames
-        # We need to encode them to jpg
+    if camera.calibration_path:
         try:
-             for frame in pipeline.run_generator():
-                 ret, buffer = cv2.imencode('.jpg', frame)
-                 if ret:
-                     yield (b'--frame\r\n'
-                            b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-        except Exception as e:
-            print(f"Stream error: {e}")
-            
-    return StreamingResponse(frame_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
+            minio.delete_file(camera.calibration_path)
+        except Exception:
+            pass
 
-@router.post("/upload-config")
-async def upload_config(file: UploadFile = File(...)):
-    """
-    Upload a custom config file (YAML).
-    Returns the saved path which can be assigned to a camera.
-    """
-    upload_dir = "configs/custom"
-    os.makedirs(upload_dir, exist_ok=True)
-    
-    file_location = f"{upload_dir}/{file.filename}"
-    
-    with open(file_location, "wb+") as file_object:
-        shutil.copyfileobj(file.file, file_object)
-        
-    return {"path": file_location}
+    camera.has_calibration = False
+    camera.calibration_path = None
+    camera.updated_at = datetime.utcnow()
+    session.add(camera)
+    session.commit()
+    session.refresh(camera)
+    return camera
+
+
+# ── Video Upload ──
+
+@router.post("/{camera_id}/video")
+async def upload_video(
+    camera_id: int,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    user: User = Depends(require_operator),
+    minio: MinIOService = Depends(get_minio),
+):
+    """Upload a video file for a camera → stored in MinIO."""
+    camera = session.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    # Read file
+    contents = await file.read()
+    object_name = f"videos/{camera_id}/{file.filename}"
+
+    minio.upload_bytes(
+        object_name,
+        contents,
+        content_type=file.content_type or "video/mp4",
+    )
+
+    # Update camera source to point to MinIO
+    camera.source_uri = object_name
+    camera.source_type = "video"
+    camera.updated_at = datetime.utcnow()
+    session.add(camera)
+    session.commit()
+    session.refresh(camera)
+
+    return {
+        "ok": True,
+        "object_name": object_name,
+        "size": len(contents),
+        "camera": CameraRead.model_validate(camera).model_dump(),
+    }

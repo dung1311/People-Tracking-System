@@ -118,10 +118,12 @@ class CrossViewTracking:
 
                         color = tuple(int(c) for c in self.colors[idx % len(self.colors)])
                         cv2.rectangle(vis_frame, (x1, y1), (x2, y2), color, 2)
+                        # Auto-adjust label position to prevent clipping at the top boundary of the image
+                        text_y = y1 - 10 if y1 - 10 >= 0 else y1 + 20
                         cv2.putText(
                             vis_frame,
                             f"Pair: {idx}",
-                            (x1, y1 - 10),
+                            (x1, text_y),
                             cv2.FONT_HERSHEY_SIMPLEX,
                             0.6,
                             color,

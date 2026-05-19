@@ -29,6 +29,7 @@ class TrackInfo:
     ):
         self.tracker_id = tracker_id
         self.person_id: Optional[int] = None
+        self.global_id: Optional[int] = None
         self.cam_id = cam_id
         self.frame_id = frame_id
         self.bbox = bbox
@@ -76,6 +77,21 @@ class TrackInfo:
             feature = feature.detach().cpu().numpy()
 
         curr = self.get_representative_feature()
+
+        # If already assigned a global ID, lock the identity to prevent splitting
+        if getattr(self, "global_id", None) is not None:
+            self.state = TrackState.ACTIVE
+            smoothed = (
+                feature
+                if curr is None
+                else (1.0 - smooth_factor) * curr + smooth_factor * feature
+            )
+            norm = np.linalg.norm(smoothed)
+            if norm > 0:
+                smoothed = smoothed / norm
+            self.features = [smoothed]
+            return
+
         if curr is not None:
             cos_dist = 1 - np.dot(curr, feature) / (
                 np.linalg.norm(curr) * np.linalg.norm(feature) + 1e-8

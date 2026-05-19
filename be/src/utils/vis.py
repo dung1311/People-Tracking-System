@@ -82,11 +82,22 @@ def draw_tracks(frame, tracks: List[TrackInfo], frame_info: Dict = None, pid_onl
                 break
             font_scale -= 0.05
 
+        # Auto-adjust label position to prevent clipping at the top boundary of the image
+        bg_h = text_h + 6
+        if y1 - bg_h >= 0:
+            bg_y1 = y1 - bg_h
+            bg_y2 = y1
+            text_y = y1 - 4
+        else:
+            bg_y1 = y1
+            bg_y2 = y1 + bg_h
+            text_y = y1 + text_h + 2
+
         # Background
         cv2.rectangle(
             frame,
-            (x1, y1 - text_h - 6),
-            (x1 + min(text_w, box_w), y1),
+            (x1, bg_y1),
+            (x1 + min(text_w, box_w), bg_y2),
             (0, 255, 0),
             -1
         )
@@ -95,7 +106,7 @@ def draw_tracks(frame, tracks: List[TrackInfo], frame_info: Dict = None, pid_onl
         cv2.putText(
             frame,
             label,
-            (x1 + 2, y1 - 4),
+            (x1 + 2, text_y),
             font,
             font_scale,
             (255, 255, 255),

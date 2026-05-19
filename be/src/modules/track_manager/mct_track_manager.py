@@ -20,9 +20,9 @@ class MCTTrackManager(SingleTrackManager):
     back after cross-camera matching.
     """
 
-    def __init__(self, config: Dict, **kwargs):
+    def __init__(self, config: Dict, embedder=None, **kwargs):
         gallery = MCTGallery(config["GALLERY"])
-        super().__init__(config, gallery=gallery, **kwargs)
+        super().__init__(config, gallery=gallery, embedder=embedder, **kwargs)
 
     def apply_global_ids(self, pid_map: Dict[int, int]):
         """Remap local person_ids → global IDs inside the gallery."""

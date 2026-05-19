@@ -1,0 +1,23 @@
+Metadata-Version: 2.4
+Name: people-mct
+Version: 0.1.0
+Summary: Multi-camera tracking core (clustering, global IDs, calibration)
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.20
+Requires-Dist: scipy>=1.7
+Requires-Dist: pyyaml>=6.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+
+# people-mct
+
+Core algorithms for multi-camera tracking (NumPy/SciPy).
+
+Install editable from repo root:
+
+```bash
+pip install -e ./MCT
+```
+
+The `be` app imports this package. Optional: add `be/src` to `PYTHONPATH` when using `CameraPairCalibration` (fundamental matrix via `modules.pose_3d`).

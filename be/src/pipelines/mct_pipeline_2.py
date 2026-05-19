@@ -25,11 +25,12 @@ import cv2
 import numpy as np
 import yaml
 
-from modules.data_templates.mct_template import CameraCalibration
+from mct import CrossCameraClusterer, GlobalTrackManagerV2
+from mct.calibration import CameraCalibration
+
 from modules.data_templates.sct_template import TrackInfo
-from modules.matching.cross_camera_clustering import CrossCameraClusterer
-from modules.track_manager.global_track_manager_v2 import GlobalTrackManagerV2
 from pipelines.camera_worker import CameraWorker
+from pipelines.mct_perf import build_optional_shared_models, get_mct_perf_flags
 from utils.vis import draw_grid
 
 logger = logging.getLogger(__name__)
@@ -48,13 +49,28 @@ class MCTPipeline2:
         )
 
         cameras = mct_cfg["CAMERAS"]
+        shared_models, enable_pose = get_mct_perf_flags(mct_cfg)
+        shared_detector, shared_embedder, shared_pose = build_optional_shared_models(
+            sct_config,
+            shared_models=shared_models,
+            enable_pose_full_body=enable_pose,
+        )
+
         self.H_invs: Dict[int, np.ndarray] = {}
         self.workers: Dict[int, CameraWorker] = {}
         for cam_id_str, cam_cfg in cameras.items():
             cid = int(cam_id_str)
             cal = CameraCalibration.load_from_json(cam_cfg["calibration"], cid)
             self.H_invs[cid] = cal.H_inv
-            self.workers[cid] = CameraWorker(cid, cam_cfg["video"], sct_config)
+            self.workers[cid] = CameraWorker(
+                cid,
+                cam_cfg["video"],
+                sct_config,
+                detector=shared_detector,
+                pose_estimator=shared_pose,
+                embedder=shared_embedder,
+                enable_pose_full_body=enable_pose,
+            )
 
         self.cam_ids_sorted = sorted(self.H_invs)
         self.cam_names = [f"Cam {c}" for c in self.cam_ids_sorted]
@@ -103,6 +119,14 @@ class MCTPipeline2:
 
                 per_cam, frames = self._collect(frame_count)
                 mapping = self._match(per_cam, frame_count)
+
+                # Update global_id in the TrackInfo objects to persist the assignment
+                for cid, tracks in per_cam.items():
+                    for t in tracks:
+                        if t.person_id is not None:
+                            gid = mapping.get((cid, t.person_id))
+                            if gid is not None:
+                                t.global_id = gid
 
                 self._write_mot(mot_files, per_cam, mapping, frame_count)
                 self._write_video(frames, per_cam, mapping, frame_count, t0)
@@ -171,9 +195,11 @@ class MCTPipeline2:
             )
         )
 
+        gids_arr = [t.global_id for t in all_tracks]
+
         clusters = self.clusterer.cluster(cam_arr, feet, feats, self.H_invs)
         return self.global_manager.assign(
-            clusters, feats, cam_arr, pid_arr, frame_count,
+            clusters, feats, cam_arr, pid_arr, frame_count, gids=gids_arr
         )
 
     def _write_mot(self, mot_files, per_cam, mapping, frame_count):
@@ -253,9 +279,21 @@ class MCTPipeline2:
                 (tw, th), _ = cv2.getTextSize(
                     label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2,
                 )
-                cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw, y1), color, -1)
+                
+                # Auto-adjust label position to prevent clipping at the top boundary of the image
+                bg_h = th + 6
+                if y1 - bg_h >= 0:
+                    bg_y1 = y1 - bg_h
+                    bg_y2 = y1
+                    text_y = y1 - 4
+                else:
+                    bg_y1 = y1
+                    bg_y2 = y1 + bg_h
+                    text_y = y1 + th + 2
+
+                cv2.rectangle(frame, (x1, bg_y1), (x1 + tw, bg_y2), color, -1)
                 cv2.putText(
-                    frame, label, (x1 + 2, y1 - 4),
+                    frame, label, (x1 + 2, text_y),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
                 )
 

@@ -1,0 +1,58 @@
+<mxfile host="app.diagrams.net" agent="5.0">
+  <diagram id="sct_state_machine_id" name="SCT State Machine">
+    <mxGraphModel dx="1414" dy="789" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="state_start" parent="1" style="ellipse;html=1;fillColor=#f8fafc;strokeColor=#0f172a;strokeWidth=2;" value="" vertex="1">
+          <mxGeometry height="20" width="20" x="510" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="state_unconf" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#f59e0b;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="UNCONFIRMED&#xa;(Buffering hits)" vertex="1">
+          <mxGeometry height="60" width="180" x="430" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="state_active" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#10b981;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="ACTIVE&#xa;(Actively tracking)" vertex="1">
+          <mxGeometry height="60" width="180" x="430" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="state_changed" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#38bdf8;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="CHANGED&#xa;(Drastic appearance change)" vertex="1">
+          <mxGeometry height="60" width="160" x="550" y="585" as="geometry" />
+        </mxCell>
+        <mxCell id="state_lost" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#f43f5e;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="LOST&#xa;(Temporarily lost)" vertex="1">
+          <mxGeometry height="60" width="180" x="30" y="310" as="geometry" />
+        </mxCell>
+        <mxCell id="state_dead" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#64748b;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="DEAD&#xa;(Removed from Gallery)" vertex="1">
+          <mxGeometry height="60" width="150" x="250" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="state_end" parent="1" style="ellipse;html=1;fillColor=#0f172a;strokeColor=#f8fafc;strokeWidth=3;fillColor2=#000000;" value="" vertex="1">
+          <mxGeometry height="30" width="30" x="310" y="555" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_start_unconf" edge="1" parent="1" source="state_start" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="state_unconf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_unconf_active" edge="1" parent="1" source="state_unconf" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10b981;strokeWidth=2;fontColor=#10b981;fontStyle=1;fontSize=11;" target="state_active" value="Hits &gt;= min_hits &amp; Valid Appearance">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_unconf_lost" edge="1" parent="1" source="state_unconf" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#f43f5e;strokeWidth=2;fontColor=#f43f5e;fontStyle=1;fontSize=11;" target="state_lost" value="Early loss">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_active_lost" edge="1" parent="1" source="state_active" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#f43f5e;strokeWidth=2;fontColor=#f43f5e;fontStyle=1;fontSize=11;" target="state_lost" value="Missed detection">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_active_changed" edge="1" parent="1" source="state_active" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#38bdf8;strokeWidth=2;fontColor=#38bdf8;fontStyle=1;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" target="state_changed" value="Feature anomaly">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_changed_lost" edge="1" parent="1" source="state_changed" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#38bdf8;strokeWidth=2;fontColor=#38bdf8;fontStyle=1;fontSize=11;" target="state_lost" value="Split track, send old ID to LOST">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_lost_active" edge="1" parent="1" source="state_lost" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10b981;strokeWidth=2;fontColor=#10b981;fontStyle=1;fontSize=11;labelBackgroundColor=none;" target="state_active" value="&lt;span style=&quot;background-color: light-dark(#ffffff, var(--ge-dark-color, #121212));&quot;&gt;Detected again &amp;amp; Re-ID matched&lt;/span&gt;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_lost_dead" edge="1" parent="1" source="state_lost" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;fontColor=#64748b;fontStyle=1;fontSize=11;exitX=0.75;exitY=1;exitDx=0;exitDy=0;" target="state_dead" value="lost_age &gt;= max_live_time">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="trans_dead_end" edge="1" parent="1" source="state_dead" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="state_end">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

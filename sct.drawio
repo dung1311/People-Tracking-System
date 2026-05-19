@@ -1,0 +1,173 @@
+<mxfile host="app.diagrams.net" agent="5.0">
+  <diagram id="sct_workflow_id" name="SCT Workflow Chart">
+    <mxGraphModel dx="1488" dy="831" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="node_start" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1e293b;strokeColor=#0f172a;fontColor=#f8fafc;fontStyle=1;fontSize=13;strokeWidth=2;" value="Start: New Frame" vertex="1">
+          <mxGeometry height="60" width="140" x="20" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="node_read" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#38bdf8;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="1. Frame Acquisition&#xa;(WebcamVideoStream)" vertex="1">
+          <mxGeometry height="60" width="160" x="200" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="node_yolo" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#f43f5e;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="2. Object Detection&#xa;(YOLOv11 Detector)" vertex="1">
+          <mxGeometry height="60" width="160" x="410" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="node_sort" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#f43f5e;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="3. 2D Temporal Association&#xa;(SORT Tracker)" vertex="1">
+          <mxGeometry height="60" width="180" x="620" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="node_feat" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#10b981;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="4. Feature Extraction&#xa;(FastReID Embedder)" vertex="1">
+          <mxGeometry height="60" width="180" x="620" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="node_dec_conf" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#f59e0b;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Tracker ID&#xa;Confirmed?" vertex="1">
+          <mxGeometry height="100" width="180" x="310" y="220" as="geometry" />
+        </mxCell>
+        <mxCell id="node_upd_conf" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#10b981;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Update Confirmed Track&#xa;(Feature Smoothing)" vertex="1">
+          <mxGeometry height="60" width="180" x="64" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="node_buf_unconf" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#10b981;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Buffer Unconfirmed Track&#xa;(In-Memory Gallery)" vertex="1">
+          <mxGeometry height="60" width="180" x="580" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="node_dec_app" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#f59e0b;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Appearance&#xa;Drastically Changed?" vertex="1">
+          <mxGeometry height="100" width="180" x="64" y="400" as="geometry" />
+        </mxCell>
+        <mxCell id="node_dec_hits" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#f59e0b;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Hits &gt;= min_hits&#xa;&amp; Valid Appearance?" vertex="1">
+          <mxGeometry height="100" width="180" x="580" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="node_split" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#f43f5e;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Mark Old Person ID LOST&#xa;&amp; Split New Track" vertex="1">
+          <mxGeometry height="60" width="160" x="280" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="node_keep_conf" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#10b981;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Maintain ACTIVE State&#xa;&amp; Keep Person ID" vertex="1">
+          <mxGeometry height="60" width="160" x="74" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="node_promote" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#10b981;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Confirm Track&#xa;&amp; Submit to Re-ID" vertex="1">
+          <mxGeometry height="60" width="150" x="630" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="node_keep_unconf" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#10b981;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Keep Unconfirmed&#xa;&amp; Wait for More Frames" vertex="1">
+          <mxGeometry height="60" width="150" x="450" y="590" as="geometry" />
+        </mxCell>
+        <mxCell id="node_reid_match" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#38bdf8;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Hungarian Re-ID Matching&#xa;against LOST Gallery" vertex="1">
+          <mxGeometry height="60" width="170" x="620" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="node_dec_reid" parent="1" style="rhombus;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#f59e0b;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Re-ID Match&#xa;Found?" vertex="1">
+          <mxGeometry height="100" width="180" x="800" y="900" as="geometry" />
+        </mxCell>
+        <mxCell id="node_assign_old" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#10b981;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Assign Historical Person ID&#xa;&amp; Promote to ACTIVE" vertex="1">
+          <mxGeometry height="60" width="160" x="625" y="1060" as="geometry" />
+        </mxCell>
+        <mxCell id="node_assign_new" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#10b981;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="Allocate New Person ID&#xa;&amp; Promote to ACTIVE" vertex="1">
+          <mxGeometry height="60" width="160" x="410" y="920" as="geometry" />
+        </mxCell>
+        <mxCell id="node_cleanup" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#f43f5e;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="5. LOST &amp; DEAD Cleanup&#xa;(Reap stale lost tracks)" vertex="1">
+          <mxGeometry height="60" width="190" x="265" y="820" as="geometry" />
+        </mxCell>
+        <mxCell id="node_db" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#0f172a;strokeColor=#10b981;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="6. Database&lt;div&gt;&lt;br/&gt;&lt;/div&gt;" vertex="1">
+          <mxGeometry height="80" width="140" x="84" y="900" as="geometry" />
+        </mxCell>
+        <mxCell id="node_output" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f172a;strokeColor=#38bdf8;fontColor=#f8fafc;fontStyle=1;fontSize=12;strokeWidth=2;" value="7. Vis &amp; MJPEG Stream&#xa;(draw_tracks)" vertex="1">
+          <mxGeometry height="60" width="160" x="74" y="1010" as="geometry" />
+        </mxCell>
+        <mxCell id="node_end" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#1e293b;strokeColor=#0f172a;fontColor=#f8fafc;fontStyle=1;fontSize=13;strokeWidth=2;" value="End of Frame" vertex="1">
+          <mxGeometry height="60" width="140" x="84" y="1100" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_start_read" edge="1" parent="1" source="node_start" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_read">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_read_yolo" edge="1" parent="1" source="node_read" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_yolo">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_yolo_sort" edge="1" parent="1" source="node_yolo" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_sort">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_sort_feat" edge="1" parent="1" source="node_sort" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_feat">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_feat_dec" edge="1" parent="1" source="node_feat" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_dec_conf">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e20RMv-h20d0C-mRzpF9-1" connectable="0" parent="edge_feat_dec" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" value="Tracker (SORT, OcSORT)" vertex="1">
+          <mxGeometry relative="1" x="-0.0179" y="-3" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_dec_yes" edge="1" parent="1" source="node_dec_conf" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10b981;strokeWidth=2;fontColor=#10b981;fontStyle=1;" target="node_upd_conf" value="Yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_dec_no" edge="1" parent="1" source="node_dec_conf" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#f43f5e;strokeWidth=2;fontColor=#f43f5e;fontStyle=1;" target="node_buf_unconf" value="No">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_upd_decapp" edge="1" parent="1" source="node_upd_conf" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_dec_app">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_buf_dechits" edge="1" parent="1" source="node_buf_unconf" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_dec_hits">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_app_yes" edge="1" parent="1" source="node_dec_app" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#f43f5e;strokeWidth=2;fontColor=#f43f5e;fontStyle=1;" target="node_split" value="Yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_app_no" edge="1" parent="1" source="node_dec_app" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10b981;strokeWidth=2;fontColor=#10b981;fontStyle=1;" target="node_keep_conf" value="No">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_hits_yes" edge="1" parent="1" source="node_dec_hits" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10b981;strokeWidth=2;fontColor=#10b981;fontStyle=1;" target="node_promote" value="Yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_hits_no" edge="1" parent="1" source="node_dec_hits" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#f43f5e;strokeWidth=2;fontColor=#f43f5e;fontStyle=1;" target="node_keep_unconf" value="No">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_split_reid" edge="1" parent="1" source="node_split" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#38bdf8;strokeWidth=2;exitX=0;exitY=0.5;exitDx=0;exitDy=0;" target="node_reid_match">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="240" y="620" />
+              <mxPoint x="240" y="1000" />
+              <mxPoint x="705" y="1000" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_promote_reid" edge="1" parent="1" source="node_promote" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#38bdf8;strokeWidth=2;" target="node_reid_match">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_match_dec" edge="1" parent="1" source="node_reid_match" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_dec_reid">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_reid_yes" edge="1" parent="1" source="node_dec_reid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10b981;strokeWidth=2;fontColor=#10b981;fontStyle=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" value="Yes">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="815.0447368421053" y="960.0526315789475" as="sourcePoint" />
+            <mxPoint x="720.0026315789476" y="1070" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_reid_no" edge="1" parent="1" source="node_dec_reid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#f43f5e;strokeWidth=2;fontColor=#f43f5e;fontStyle=1;" target="node_assign_new" value="No">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_old_cleanup" edge="1" parent="1" source="node_assign_old" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_cleanup">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_new_cleanup" edge="1" parent="1" source="node_assign_new" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_cleanup">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_keepconf_cleanup" edge="1" parent="1" source="node_keep_conf" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_cleanup">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="154" y="850" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_keepunconf_cleanup" edge="1" parent="1" source="node_keep_unconf" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_cleanup">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="525" y="850" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_cleanup_db" edge="1" parent="1" source="node_cleanup" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_db_out" edge="1" parent="1" source="node_db" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_output">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_out_end" edge="1" parent="1" source="node_output" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748b;strokeWidth=2;" target="node_end">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

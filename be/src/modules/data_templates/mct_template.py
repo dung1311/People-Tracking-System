@@ -1,66 +1,15 @@
 from __future__ import annotations
 
-import json
 import logging
-from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+from mct.calibration import CameraCalibration, CameraPairCalibration
+
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Camera calibration
-# ---------------------------------------------------------------------------
-
-class CameraCalibration:
-    """Lightweight wrapper around a single camera's projection / homography."""
-
-    def __init__(self, cam_id: int, P: np.ndarray, H: np.ndarray):
-        self.cam_id = cam_id
-        self.P = np.asarray(P, dtype=np.float64)        # 3x4
-        self.H = np.asarray(H, dtype=np.float64)         # 3x3  (world -> image)
-        self.H_inv = np.linalg.inv(self.H)               # 3x3  (image -> world)
-
-    @classmethod
-    def load_from_json(cls, path: str, cam_id: int) -> "CameraCalibration":
-        with open(path) as f:
-            data = json.load(f)
-        P = np.array(data["camera projection matrix"], dtype=np.float64)
-        H = np.array(data["homography matrix"], dtype=np.float64)
-        return cls(cam_id=cam_id, P=P, H=H)
-
-    def project_to_world(self, image_point: np.ndarray) -> np.ndarray:
-        """Project a 2-D image point to the world ground plane via H_inv.
-
-        Args:
-            image_point: shape ``(2,)`` -- ``(u, v)`` in pixel coords.
-
-        Returns:
-            ``(x, y)`` on the world ground plane.
-        """
-        pt_h = np.array([image_point[0], image_point[1], 1.0])
-        world_h = self.H_inv @ pt_h
-        world_h /= world_h[2]
-        return world_h[:2]
-
-
-class CameraPairCalibration:
-    """Pre-computed geometric relations between two cameras."""
-
-    def __init__(self, cal_i: CameraCalibration, cal_j: CameraCalibration):
-        from modules.pose_3d.geometry.stereo import get_fundamental_matrix
-
-        self.cal_i = cal_i
-        self.cal_j = cal_j
-        self.F = get_fundamental_matrix(cal_i.P, cal_j.P)
-
-    @property
-    def key(self) -> Tuple[int, int]:
-        return (self.cal_i.cam_id, self.cal_j.cam_id)
 
 
 # ---------------------------------------------------------------------------

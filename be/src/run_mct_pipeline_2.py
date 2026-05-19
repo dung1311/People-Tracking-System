@@ -2,6 +2,16 @@
 
 import argparse
 import logging
+import sys
+
+try:
+    import mct  # noqa: F401 — ensures ``people-mct`` is installed
+except ImportError:
+    print(
+        "Missing package ``mct``. Install from repo root: pip install -e ./MCT",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 from utils.load_config import load_config
 from pipelines.mct_pipeline_2 import MCTPipeline2

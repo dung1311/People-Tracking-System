@@ -334,9 +334,21 @@ class MCTPipeline:
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
 
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-            cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw, y1), color, -1)
+            
+            # Auto-adjust label position to prevent clipping at the top boundary of the image
+            bg_h = th + 6
+            if y1 - bg_h >= 0:
+                bg_y1 = y1 - bg_h
+                bg_y2 = y1
+                text_y = y1 - 4
+            else:
+                bg_y1 = y1
+                bg_y2 = y1 + bg_h
+                text_y = y1 + th + 2
+
+            cv2.rectangle(frame, (x1, bg_y1), (x1 + tw, bg_y2), color, -1)
             cv2.putText(
-                frame, label, (x1 + 2, y1 - 4),
+                frame, label, (x1 + 2, text_y),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
             )
 
