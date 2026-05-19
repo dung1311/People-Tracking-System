@@ -50,6 +50,10 @@ class SCTVideoPipeline:
                 }
         
             tracks = self.tracker.update(selected_bboxes, frame_info)
+            
+            # Since selected_bboxes are already filtered by is_full_body, all generated tracks are full body
+            frame_info["is_full_body"] = {int(trk[4]): True for trk in tracks}
+            
             live_tracks = self.track_manager.process(tracks, frame_info)
             
             for track in live_tracks:
@@ -59,7 +63,7 @@ class SCTVideoPipeline:
                 h = y2 - y1
                 mot_file.write(f"{current_frame},{pid},{x1},{y1},{w},{h},1,-1,-1,-1\n")
             
-            annotated_frame = draw_tracks(frame, live_tracks, frame_info, pid_only=True)
+            annotated_frame = draw_tracks(frame, live_tracks, frame_info, pid_only=False)
             writer.write(annotated_frame)
             logger.info("Frame %d/%d", current_frame, total_frames)
         

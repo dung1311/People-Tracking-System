@@ -19,7 +19,7 @@ def main():
         help="Path to SCT config YAML",
     )
     parser.add_argument(
-        "--mct-config", default="configs/mct_config.yaml",
+        "--mct-config", default="configs/awl_config.yaml",
         help="Path to MCT config YAML",
     )
     args = parser.parse_args()

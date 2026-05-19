@@ -20,7 +20,7 @@ POSE_ESTIMATION:
 TRACKING:
   name: sort
   sort:
-    max_age: 10
+    max_age: 30
     min_hits: 3
     iou_threshold: 0.3
   ocsort:
@@ -42,7 +42,7 @@ TRACK_MANAGER:
     min_hits: 3
     max_features: 50
   MATCHING:
-    distance_threshold: 0.4
+    distance_threshold: 0.5
   EMBEDDING:
     name: fastreid
     fastreid: configs/osnet-ain_x1.0-ibn_512_256x192_ccdmmps.yaml

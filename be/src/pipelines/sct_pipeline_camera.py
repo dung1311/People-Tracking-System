@@ -54,6 +54,10 @@ class SCTCameraPipeline:
                     }
 
                 tracks = self.tracker.update(bboxes, frame_info)
+                
+                # Treat all tracks as valid full body tracks in camera pipeline
+                frame_info["is_full_body"] = {int(trk[4]): True for trk in tracks}
+                
                 live_tracks = self.track_manager.process(tracks, frame_info)
 
                 annotated_frame = draw_tracks(frame, live_tracks, frame_info)

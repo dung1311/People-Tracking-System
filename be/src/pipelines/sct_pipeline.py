@@ -77,6 +77,9 @@ class SCTPipeline:
                     # 2. Tracking
                     tracks = self.tracker.update(bboxes, frame_info)
                     
+                    # Treat all tracks as valid full body tracks in camera database pipeline
+                    frame_info["is_full_body"] = {int(trk[4]): True for trk in tracks}
+                    
                     # 3. Track Management (Re-ID, etc)
                     live_tracks = self.track_manager.process(tracks, frame_info)
                     
