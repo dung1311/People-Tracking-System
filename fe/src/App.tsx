@@ -1,24 +1,19 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout/Layout';
-import { Dashboard } from './pages/Dashboard';
-import { Cameras } from './pages/Cameras';
 import { Search } from './pages/Search';
-import { Sessions } from './pages/Sessions';
-import { SessionDetail } from './pages/SessionDetail';
-import { Configs } from './pages/Configs';
+import { CameraNetworks } from './pages/CameraNetworks';
+import { CameraNetworkDetail } from './pages/CameraNetworkDetail';
 
 function App() {
   return (
     <BrowserRouter>
       <Layout>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/cameras" element={<Cameras />} />
-          <Route path="/sessions" element={<Sessions />} />
-          <Route path="/sessions/:id" element={<SessionDetail />} />
-          <Route path="/configs" element={<Configs />} />
+          <Route path="/" element={<Navigate to="/camera_networks" replace />} />
+          <Route path="/camera_networks" element={<CameraNetworks />} />
+          <Route path="/camera_networks/:id" element={<CameraNetworkDetail />} />
           <Route path="/search" element={<Search />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/camera_networks" replace />} />
         </Routes>
       </Layout>
     </BrowserRouter>

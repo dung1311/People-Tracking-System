@@ -18,22 +18,31 @@ class MinIOClient:
         self.fallback_mode = False
         self.buckets = ["videos", "calibrations", "snapshots", "recordings", "thumbnails"]
         
-        try:
-            logger.info(f"Connecting to MinIO at {self.endpoint}...")
-            self.client = Minio(
-                endpoint=self.endpoint,
-                access_key=self.access_key,
-                secret_key=self.secret_key,
-                secure=self.secure
-            )
-            # Verify connection by listing buckets or making a simple call
-            # This triggers fallback if connection fails
-            self.init_buckets()
-            logger.info("MinIO storage client initialized successfully")
-        except Exception as e:
-            logger.warning(f"Failed to connect to MinIO: {e}. Falling back to local filesystem storage.")
-            self.fallback_mode = True
-            self.init_fallback_dirs()
+        import time
+        max_retries = 5
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(f"Connecting to MinIO at {self.endpoint} (attempt {attempt}/{max_retries})...")
+                self.client = Minio(
+                    endpoint=self.endpoint,
+                    access_key=self.access_key,
+                    secret_key=self.secret_key,
+                    secure=self.secure
+                )
+                # Verify connection by listing buckets or making a simple call
+                # This triggers fallback if connection fails
+                self.init_buckets()
+                logger.info("MinIO storage client initialized successfully")
+                self.fallback_mode = False
+                break
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning(f"MinIO connection failed: {e}. Retrying in 1 second...")
+                    time.sleep(1)
+                else:
+                    logger.warning(f"Failed to connect to MinIO after {max_retries} attempts: {e}. Falling back to local filesystem storage.")
+                    self.fallback_mode = True
+                    self.init_fallback_dirs()
 
     def init_buckets(self):
         for bucket in self.buckets:

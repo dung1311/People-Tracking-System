@@ -1,6 +1,8 @@
 services:
+  # 1. Database: PostgreSQL tích hợp pgvector cho việc tìm kiếm đặc trưng vector (Re-ID)
   db:
     image: pgvector/pgvector:pg16
+    container_name: mct-db
     environment:
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
@@ -8,60 +10,27 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # LƯU Ý: Đổi thành "5435:5432" để tránh xung đột cổng 5432 với PostgreSQL chạy local của máy Host.
+      # Bên trong các container vẫn kết nối qua cổng 5432 bình thường.
+      - "5435:5432"
+    restart: always
 
-  backend:
-    build: 
-      context: ./be
-    container_name: datn-backend
-    volumes:
-      - ./be/data:/app/data
-      - ./be/configs:/app/configs
-      - ./be/logs:/app/logs
-      # Map weights if needed
-      - ./be/yolo11n.pt:/app/yolo11n.pt
-    environment:
-      DATABASE_URL: postgresql://user:password@db:5432/db
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadminpassword
-      MINIO_SECURE: "False"
-    ports:
-      - "8000:8000"
-    depends_on:
-      - db
-      - minio
-    
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
+  # 2. Object Storage: MinIO lưu trữ video, calibrations, snapshots và thumbnails
   minio:
-    image: minio/minio
+    image: minio/minio:latest
     container_name: mct-minio
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadminpassword
     ports:
+      # LƯU Ý: Nếu cổng 9000 hoặc 9001 trên máy bạn đã bị chiếm,
+      # bạn hãy dừng dịch vụ local đó trước khi khởi động docker compose.
       - "9000:9000"
       - "9001:9001"
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
     restart: always
-
-  frontend:
-    build:
-      context: ./fe
-    container_name: datn-frontend
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
 
 volumes:
   postgres_data:

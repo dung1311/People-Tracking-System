@@ -1,22 +1,23 @@
 from typing import Optional, List
 from datetime import datetime
 from pydantic import BaseModel
-from models.tracking_session import TrackingSessionBase
+from models.camera_network import CameraNetworkBase
+from schemas.camera import CameraRead
 
-class TrackingSessionCreate(BaseModel):
+class CameraNetworkCreate(BaseModel):
     name: str
-    camera_ids: List[int]
     sct_config_id: Optional[int] = None
     mct_config_id: Optional[int] = None
 
-class TrackingSessionRead(TrackingSessionBase):
+class CameraNetworkRead(CameraNetworkBase):
     id: int
     created_at: datetime
+    cameras: List[CameraRead] = []
 
     class Config:
         from_attributes = True
 
-class TrackingSessionUpdate(BaseModel):
+class CameraNetworkUpdate(BaseModel):
     name: Optional[str] = None
     status: Optional[str] = None
     total_frames: Optional[int] = None

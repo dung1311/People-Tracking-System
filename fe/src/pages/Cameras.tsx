@@ -2,17 +2,18 @@ import { useEffect, useState } from 'react';
 import { Card } from '../components/Common/Card';
 import { Button } from '../components/Common/Button';
 import { Input } from '../components/Common/Input';
-import { CameraService } from '../api/services';
-import type { Camera } from '../types';
+import { CameraService, CameraNetworkService } from '../api/services';
+import type { Camera, CameraNetwork } from '../types';
 import { Plus, Trash2, Video, FileCode, CheckCircle, AlertTriangle, Upload, Settings, MapPin } from 'lucide-react';
 
 export function Cameras() {
   const [cameras, setCameras] = useState<Camera[]>([]);
+  const [networks, setNetworks] = useState<CameraNetwork[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   // Forms
-  const [newCamera, setNewCamera] = useState({ name: '', source: '', location: '' });
+  const [newCamera, setNewCamera] = useState({ name: '', source: '', location: '', network_id: '' as number | '' });
   const [selectedCalibFile, setSelectedCalibFile] = useState<File | null>(null);
   const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<number, string>>({});
@@ -37,6 +38,8 @@ export function Cameras() {
   const loadCameras = async () => {
     try {
       const data = await CameraService.getAll();
+      const nets = await CameraNetworkService.getAll();
+      setNetworks(nets);
       setCameras(data);
       if (data.length > 0) {
         // Fetch thumbnails for all cameras
@@ -94,6 +97,7 @@ export function Cameras() {
           name: newCamera.name,
           source: `videos/${modalVideoFile.name}`,
           location: newCamera.location,
+          network_id: newCamera.network_id ? Number(newCamera.network_id) : undefined,
           is_active: true
         });
         
@@ -105,12 +109,13 @@ export function Cameras() {
           name: newCamera.name,
           source: newCamera.source,
           location: newCamera.location,
+          network_id: newCamera.network_id ? Number(newCamera.network_id) : undefined,
           is_active: true
         });
       }
 
       setIsModalOpen(false);
-      setNewCamera({ name: '', source: '', location: '' });
+      setNewCamera({ name: '', source: '', location: '', network_id: '' });
       setModalVideoFile(null);
       setConnectionStatus(null);
       setConnectionMsg('');
@@ -489,7 +494,21 @@ export function Cameras() {
                 />
               </div>
 
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.4rem' }}>Chọn Camera Network</label>
+                <select 
+                  value={newCamera.network_id} 
+                  onChange={e => setNewCamera({...newCamera, network_id: e.target.value ? Number(e.target.value) : ''})}
+                  style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-tertiary)', color: 'white' }}
+                >
+                  <option value="">-- Không thuộc Network nào --</option>
+                  {networks.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+                </select>
+              </div>
+
               <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
+
                 <Button 
                   onClick={handleAdd} 
                   disabled={loading || (sourceType === 'rtsp' && !newCamera.source) || (sourceType === 'video' && !modalVideoFile)} 

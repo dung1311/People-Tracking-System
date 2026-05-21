@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.git/
+.gitignore
+
+# Hạn chế đóng gói các thư mục dữ liệu lớn (đã được mount qua volumes khi chạy)
+data/
+logs/
+outputs/
+weights/
+*.pt
+
+# Dev configs
+.env
+.vscode/
+tests/

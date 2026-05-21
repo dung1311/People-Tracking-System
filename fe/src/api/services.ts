@@ -1,7 +1,7 @@
 import { apiClient } from './client';
-import type { Camera, CameraCreate, User, TrackingConfig, TrackingSession, Track, SearchResult } from '../types';
+import type { Camera, CameraCreate, User, TrackingConfig, CameraNetwork, Track, SearchResult } from '../types';
 
-export type { Camera, Track, SearchResult };
+export type { Camera, Track, SearchResult, CameraNetwork };
 
 // Authentication Service
 export const AuthService = {
@@ -128,32 +128,32 @@ export const ConfigService = {
 };
 
 // Tracking Sessions Service
-export const SessionService = {
+export const CameraNetworkService = {
   getAll: async () => {
-    const response = await apiClient.get<TrackingSession[]>('/sessions/');
+    const response = await apiClient.get<CameraNetwork[]>('/camera_networks/');
     return response.data;
   },
   getById: async (id: number) => {
-    const response = await apiClient.get<TrackingSession>(`/sessions/${id}`);
+    const response = await apiClient.get<CameraNetwork>(`/camera_networks/${id}`);
     return response.data;
   },
-  create: async (data: { name: string; camera_ids: number[]; sct_config_id?: number; mct_config_id?: number }) => {
-    const response = await apiClient.post<TrackingSession>('/sessions/', data);
+  create: async (data: { name: string; camera_ids?: number[]; sct_config_id?: number; mct_config_id?: number }) => {
+    const response = await apiClient.post<CameraNetwork>('/camera_networks/', data);
     return response.data;
   },
   delete: async (id: number) => {
-    await apiClient.delete(`/sessions/${id}`);
+    await apiClient.delete(`/camera_networks/${id}`);
   },
   start: async (id: number) => {
-    const response = await apiClient.post<{ ok: boolean; status: string }>(`/sessions/${id}/start`);
+    const response = await apiClient.post<{ ok: boolean; status: string }>(`/camera_networks/${id}/start`);
     return response.data;
   },
   stop: async (id: number) => {
-    const response = await apiClient.post<{ ok: boolean; status: string }>(`/sessions/${id}/stop`);
+    const response = await apiClient.post<{ ok: boolean; status: string }>(`/camera_networks/${id}/stop`);
     return response.data;
   },
   getOutputUrl: async (id: number) => {
-    const response = await apiClient.get<{ url: string }>(`/sessions/${id}/output`);
+    const response = await apiClient.get<{ url: string }>(`/camera_networks/${id}/output`);
     return response.data;
   },
 };
@@ -166,10 +166,11 @@ export const TrackService = {
 };
 
 export const SearchService = {
-  searchPromise: async (file: File) => {
+  searchPromise: async (file: File, networkId?: number) => {
     const formData = new FormData();
     formData.append('file', file);
     const response = await apiClient.post<SearchResult>('/search/search', formData, {
+      params: networkId ? { network_id: networkId } : {},
       headers: {
         'Content-Type': 'multipart/form-data',
       },

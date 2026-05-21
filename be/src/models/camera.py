@@ -1,8 +1,10 @@
 from typing import Optional
 from datetime import datetime
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, Relationship
 
 class CameraBase(SQLModel):
+    network_id: Optional[int] = Field(default=None, foreign_key="cameranetwork.id")
+
     name: str = Field(index=True)
     source: str  # RTSP URL, file path, or device index
     source_type: str = Field(default="video")  # "rtsp" | "video" | "webcam"
@@ -19,6 +21,7 @@ class CameraBase(SQLModel):
     calibration_path: Optional[str] = None  # MinIO or local path
 
 class Camera(CameraBase, table=True):
+    network: Optional["CameraNetwork"] = Relationship(back_populates="cameras")
     id: Optional[int] = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

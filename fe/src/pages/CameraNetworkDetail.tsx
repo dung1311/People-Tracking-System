@@ -1,0 +1,955 @@
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Card } from '../components/Common/Card';
+import { Button } from '../components/Common/Button';
+import { CameraNetworkService, CameraService } from '../api/services';
+import type { CameraNetwork, Camera } from '../types';
+import { Play, Square, Video, Cpu, Award, Zap, Clock, ArrowLeft, Download, RefreshCw, Trash2, Plus, Upload, X, Loader2 } from 'lucide-react';
+
+export function CameraNetworkDetail() {
+  const { id } = useParams<{ id: string }>();
+  const networkId = Number(id);
+  const navigate = useNavigate();
+  
+  const [network, setNetwork] = useState<CameraNetwork | null>(null);
+  const [liveFrame, setLiveFrame] = useState<string | null>(null);
+  const [liveStats, setLiveStats] = useState({ frame_id: 0, active_globals: 0, fps: 0.0 });
+  const [outputVideoUrl, setOutputVideoUrl] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [wsStatus, setWsStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  const [error, setError] = useState<string | null>(null);
+  
+  // Custom camera management states
+  const [thumbnails, setThumbnails] = useState<Record<number, string>>({});
+  const [showAddCamModal, setShowAddCamModal] = useState(false);
+  const [camName, setCamName] = useState('');
+  const [camLocation, setCamLocation] = useState('');
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [calibFile, setCalibFile] = useState<File | null>(null);
+  const [uploadStep, setUploadStep] = useState<'idle' | 'creating' | 'uploading_video' | 'uploading_calib' | 'finishing'>('idle');
+  const [uploadProgressText, setUploadProgressText] = useState('');
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const userRole = localStorage.getItem('user_role');
+  const canEdit = userRole === 'ADMIN' || userRole === 'OPERATOR';
+
+  const loadThumbnails = async (cams: Camera[]) => {
+    const map: Record<number, string> = {};
+    await Promise.all(
+      cams.map(async (cam) => {
+        if (cam.id) {
+          try {
+            const res = await CameraService.getThumbnail(cam.id);
+            map[cam.id] = res.url;
+          } catch (e) {
+            console.warn(`Could not get thumbnail for camera ${cam.id}`, e);
+          }
+        }
+      })
+    );
+    setThumbnails((prev) => ({ ...prev, ...map }));
+  };
+
+  const loadNetwork = async () => {
+    try {
+      const data = await CameraNetworkService.getById(networkId);
+      setNetwork(data);
+      if (data.cameras) {
+        loadThumbnails(data.cameras);
+      }
+      
+      if (data.status === 'completed' && !outputVideoUrl) {
+        try {
+          const outRes = await CameraNetworkService.getOutputUrl(networkId);
+          setOutputVideoUrl(outRes.url);
+        } catch (e) {
+          console.warn('Could not fetch output video URL', e);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Không thể lấy thông tin phiên theo dõi này');
+    }
+  };
+
+  useEffect(() => {
+    loadNetwork();
+    // Poll network status changes if it's created or failed
+    const interval = setInterval(() => {
+      if (network?.status !== 'running') {
+        loadNetwork();
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [networkId, network?.status]);
+
+  // WebSocket Connection Handler for live streaming
+  useEffect(() => {
+    if (network?.status === 'running' || network?.status === 'stopping') {
+      connectWebSocket();
+    } else {
+      disconnectWebSocket();
+    }
+
+    return () => {
+      disconnectWebSocket();
+    };
+  }, [network?.status, networkId]);
+
+  const connectWebSocket = () => {
+    if (wsRef.current) return;
+    
+    setWsStatus('connecting');
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProto}//localhost:8000/api/v1/ws/network/${networkId}`;
+    
+    console.log(`Connecting to stream: ${wsUrl}`);
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setWsStatus('connected');
+      setError(null);
+      console.log('WebSocket stream connected');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'frame') {
+          setLiveFrame(`data:image/jpeg;base64,${msg.data.base64_jpg}`);
+          setLiveStats({
+            frame_id: msg.data.frame_id,
+            active_globals: msg.data.active_globals,
+            fps: msg.data.fps
+          });
+        } else if (msg.type === 'session_status') {
+          loadNetwork();
+        }
+      } catch (err) {
+        console.error('Error reading live stream message', err);
+      }
+    };
+
+    ws.onerror = (err) => {
+      console.error('WebSocket stream error', err);
+    };
+
+    ws.onclose = () => {
+      setWsStatus('disconnected');
+      wsRef.current = null;
+      console.log('WebSocket stream closed');
+    };
+  };
+
+  const disconnectWebSocket = () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+      setWsStatus('disconnected');
+    }
+  };
+
+  const handleStart = async () => {
+    if (!canEdit) return;
+    if (!network?.cameras || network.cameras.length === 0) {
+      setError('Vui lòng thêm ít nhất một camera có đầy đủ cấu hình trước khi bắt đầu.');
+      return;
+    }
+    setActionLoading(true);
+    setError(null);
+    try {
+      await CameraNetworkService.start(networkId);
+      await loadNetwork();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Bắt đầu tiến trình bám vết thất bại');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleStop = async () => {
+    if (!canEdit) return;
+    if (!window.confirm('Bạn có muốn dừng tiến trình bám vết này?')) return;
+    setActionLoading(true);
+    setError(null);
+    try {
+      await CameraNetworkService.stop(networkId);
+      await loadNetwork();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Dừng tiến trình bám vết thất bại');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSaveCamera = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!camName.trim()) {
+      setError('Vui lòng nhập tên camera.');
+      return;
+    }
+    if (!videoFile) {
+      setError('Vui lòng chọn file video nguồn.');
+      return;
+    }
+
+    setError(null);
+    setUploadStep('creating');
+    setUploadProgressText('Đang tạo thực thể camera trên hệ thống...');
+
+    try {
+      // 1. Create camera in DB associated to this network
+      const newCam = await CameraService.create({
+        name: camName.trim(),
+        network_id: networkId,
+        source: `videos/${videoFile.name}`,
+        source_type: 'video',
+        location: camLocation.trim() || undefined,
+        is_active: false
+      });
+
+      if (!newCam.id) {
+        throw new Error('Không nhận được ID camera từ máy chủ');
+      }
+
+      // 2. Upload video file
+      setUploadStep('uploading_video');
+      setUploadProgressText('Đang tải lên file video và tự động trích xuất metadata (có thể mất vài giây)...');
+      await CameraService.uploadVideo(newCam.id, videoFile);
+
+      // 3. Upload calibration matrix if present
+      if (calibFile) {
+        setUploadStep('uploading_calib');
+        setUploadProgressText('Đang tải lên và cấu hình ma trận hiệu chuẩn camera...');
+        await CameraService.uploadCalibration(newCam.id, calibFile);
+      }
+
+      // 4. Finish upload
+      setUploadStep('finishing');
+      setUploadProgressText('Hoàn tất! Camera đã được tích hợp thành công vào phiên bám vết.');
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Reset states
+      setCamName('');
+      setCamLocation('');
+      setVideoFile(null);
+      setCalibFile(null);
+      setShowAddCamModal(false);
+      
+      // Reload network details
+      await loadNetwork();
+    } catch (err: any) {
+      console.error(err);
+      setError(err.response?.data?.detail || err.message || 'Lỗi trong quá trình khởi tạo camera. Vui lòng kiểm tra lại file.');
+    } finally {
+      setUploadStep('idle');
+      setUploadProgressText('');
+    }
+  };
+
+  const handleDeleteCamera = async (camId: number) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa camera này? Tất cả video và cấu hình liên quan đến camera này sẽ bị xóa khỏi hệ thống.')) {
+      return;
+    }
+    setActionLoading(true);
+    setError(null);
+    try {
+      await CameraService.delete(camId);
+      await loadNetwork();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Xóa camera thất bại');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (!network) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px' }}>
+        <RefreshCw className="animate-spin" size={32} color="var(--accent-primary)" />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+      {/* Header breadcrumb */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button 
+            onClick={() => navigate('/camera_networks')}
+            style={{
+              padding: '8px',
+              borderRadius: '8px',
+              backgroundColor: 'var(--bg-secondary)',
+              border: '1px solid var(--border-color)',
+              color: 'white',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div>
+            <h2 style={{ fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.5px', marginBottom: '2px' }}>
+              {network.name}
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              Camera Network ID: #{network.id} • Khởi tạo: {network.created_at ? new Date(network.created_at).toLocaleDateString('vi-VN') : 'N/A'}
+            </p>
+          </div>
+        </div>
+
+        {canEdit && (
+          <div style={{ display: 'flex', gap: '10px' }}>
+            {network.status !== 'running' && network.status !== 'stopping' ? (
+              <Button 
+                onClick={handleStart} 
+                disabled={actionLoading}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backgroundColor: 'var(--success)',
+                  border: 'none',
+                  boxShadow: '0 4px 12px rgba(34, 197, 94, 0.3)'
+                }}
+              >
+                <Play size={16} fill="white" />
+                Bắt đầu xử lý bám vết
+              </Button>
+            ) : (
+              <Button 
+                onClick={handleStop} 
+                disabled={actionLoading || network.status === 'stopping'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backgroundColor: 'var(--error)',
+                  border: 'none',
+                  boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+                }}
+              >
+                <Square size={16} fill="white" />
+                Dừng phiên làm việc
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ padding: '0.75rem 1rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', color: 'var(--error)', fontSize: '0.9rem' }}>
+          {error}
+        </div>
+      )}
+
+      {/* Main Layout Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr', gap: 'var(--spacing-lg)' }}>
+        {/* Left pane: Live view or Player */}
+        <Card style={{ padding: network.status === 'created' ? 'var(--spacing-lg)' : '0', overflow: 'hidden', display: 'flex', flexDirection: 'column', backgroundColor: '#0c0e12', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
+          {network.status === 'running' ? (
+            <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+              {liveFrame ? (
+                <img 
+                  src={liveFrame} 
+                  alt="Live tracking grid view" 
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              ) : (
+                <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                  <RefreshCw className="animate-spin" size={36} style={{ marginBottom: '12px', animationDuration: '2s' }} />
+                  <p style={{ fontSize: '0.95rem' }}>Đang kết nối camera workers và tạo luồng video...</p>
+                </div>
+              )}
+              {/* Live Tag */}
+              <div style={{
+                position: 'absolute',
+                top: '16px',
+                left: '16px',
+                backgroundColor: 'rgba(239, 68, 68, 0.85)',
+                color: 'white',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                padding: '4px 10px',
+                borderRadius: '4px',
+                textTransform: 'uppercase',
+                letterSpacing: '1px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'white', display: 'inline-block' }} />
+                LIVE STREAMING
+              </div>
+            </div>
+          ) : network.status === 'completed' ? (
+            <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', backgroundColor: '#000' }}>
+              {outputVideoUrl ? (
+                <video 
+                  src={outputVideoUrl}
+                  controls
+                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
+                  <Video size={48} style={{ marginBottom: '12px', opacity: 0.5 }} />
+                  <p>Lưu trữ kết quả đã sẵn sàng. Đang tạo link download...</p>
+                </div>
+              )}
+            </div>
+          ) : network.status === 'created' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'white', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Video size={18} color="var(--accent-primary)" />
+                  Mạng lưới camera thành viên ({network.cameras?.length || 0})
+                </h4>
+              </div>
+
+              {/* Grid of cameras */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+                gap: '16px'
+              }}>
+                {network.cameras?.map((cam) => (
+                  <div
+                    key={cam.id}
+                    style={{
+                      backgroundColor: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '10px',
+                      overflow: 'hidden',
+                      position: 'relative',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      transition: 'transform 0.2s ease, border-color 0.2s ease'
+                    }}
+                  >
+                    {/* Camera Thumbnail */}
+                    <div style={{ position: 'relative', aspectRatio: '16/9', backgroundColor: '#000', overflow: 'hidden' }}>
+                      {thumbnails[cam.id!] ? (
+                        <img
+                          src={thumbnails[cam.id!]}
+                          alt={cam.name}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
+                          <Video size={32} style={{ opacity: 0.3 }} />
+                          <span style={{ fontSize: '0.75rem', marginTop: '4px' }}>Chưa có preview</span>
+                        </div>
+                      )}
+
+                      {/* Top Right delete button */}
+                      {canEdit && (
+                        <button
+                          onClick={() => handleDeleteCamera(cam.id!)}
+                          style={{
+                            position: 'absolute',
+                            top: '8px',
+                            right: '8px',
+                            backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                            border: 'none',
+                            borderRadius: '6px',
+                            width: '28px',
+                            height: '28px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                            transition: 'background-color 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--error)'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.9)'}
+                          title="Xóa camera"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Camera Body Info */}
+                    <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, justifyContent: 'space-between' }}>
+                      <div>
+                        <h5 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'white', margin: 0 }}>{cam.name}</h5>
+                        {cam.location && (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Vị trí: {cam.location}</span>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {/* Calibration status */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            backgroundColor: cam.has_calibration ? 'var(--success)' : 'var(--warning)'
+                          }} />
+                          <span style={{ fontSize: '0.75rem', color: cam.has_calibration ? '#4ade80' : '#fbbf24', fontWeight: 500 }}>
+                            {cam.has_calibration ? 'Đã cấu hình hiệu chuẩn' : 'Chưa cấu hình hiệu chuẩn'}
+                          </span>
+                        </div>
+
+                        {/* Resolution & FPS */}
+                        {cam.resolution && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            {cam.resolution} @ {cam.fps} FPS
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Add Camera Card */}
+                {canEdit && (
+                  <div
+                    onClick={() => setShowAddCamModal(true)}
+                    style={{
+                      border: '2px dashed rgba(99, 102, 241, 0.3)',
+                      borderRadius: '10px',
+                      aspectRatio: '16/9',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'border-color 0.2s, background-color 0.2s, transform 0.2s',
+                      backgroundColor: 'rgba(99, 102, 241, 0.02)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = 'var(--accent-primary)';
+                      e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.06)';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)';
+                      e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.02)';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <Plus size={32} color="var(--accent-primary)" style={{ marginBottom: '8px' }} />
+                    <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>Thêm Camera Mới</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>Upload video & hiệu chuẩn</span>
+                  </div>
+                )}
+              </div>
+
+              {network.cameras?.length === 0 && (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '3rem',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-secondary)'
+                }}>
+                  <Video size={40} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                  <p style={{ fontSize: '0.9rem', margin: 0 }}>Chưa có camera nào trong mạng lưới này.</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '4px', textAlign: 'center', maxWidth: '300px' }}>
+                    Nhấn vào thẻ <strong>"Thêm Camera Mới"</strong> ở trên để upload nguồn video và cấu hình ma trận hiệu chuẩn homography.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ width: '100%', aspectRatio: '16/9', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', padding: '2rem' }}>
+              <Video size={56} style={{ marginBottom: '12px', opacity: 0.4 }} />
+              <h4 style={{ color: 'white', fontWeight: 600, fontSize: '1.1rem', marginBottom: '4px' }}>
+                {network.status === 'stopping' ? 'Đang đóng tiến trình...' : 'Tiến trình bám vết thất bại'}
+              </h4>
+              <p style={{ fontSize: '0.875rem', textAlign: 'center', maxWidth: '380px' }}>
+                {network.status === 'stopping' 
+                  ? 'Hệ thống đang lưu trữ cơ sở dữ liệu bám vết và giải phóng tài nguyên luồng...' 
+                  : 'Đã xảy ra lỗi khi bám vết các nguồn camera. Vui lòng kiểm tra lại cấu hình JSON hiệu chuẩn hoặc video.'}
+              </p>
+            </div>
+          )}
+        </Card>
+
+        {/* Right pane: Stats and details */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
+          {/* Status Box */}
+          <Card style={{ padding: 'var(--spacing-md)' }}>
+            <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px', marginBottom: '12px' }}>
+              Trạng thái & Tiến độ
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '12px',
+                  height: '12px',
+                  borderRadius: '50%',
+                  backgroundColor: network.status === 'running' ? 'var(--accent-primary)' : network.status === 'completed' ? 'var(--success)' : network.status === 'failed' ? 'var(--error)' : 'var(--text-secondary)'
+                }} />
+                <span style={{ fontSize: '1.05rem', fontWeight: 600, textTransform: 'capitalize' }}>
+                  {network.status === 'running' ? 'Đang bám vết...' : network.status === 'completed' ? 'Đã hoàn thành' : network.status === 'failed' ? 'Thất bại' : network.status === 'stopping' ? 'Đang dừng...' : 'Chưa kích hoạt'}
+                </span>
+              </div>
+
+              {network.status === 'running' && (
+                <div style={{
+                  padding: '8px 12px',
+                  backgroundColor: 'rgba(99, 102, 241, 0.08)',
+                  border: '1px solid rgba(99, 102, 241, 0.2)',
+                  borderRadius: '6px',
+                  fontSize: '0.85rem',
+                  color: '#818cf8',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <Cpu size={14} />
+                  <span>Luồng WS: {wsStatus === 'connected' ? 'Đang stream mượt mà' : 'Đang thiết lập luồng...'}</span>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Stats Box */}
+          <Card style={{ padding: 'var(--spacing-md)' }}>
+            <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px', marginBottom: '16px' }}>
+              Chỉ số bám vết thời gian thực
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  <Award size={16} />
+                  Tổng số ID bám vết (ReID)
+                </span>
+                <span style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-secondary)' }}>
+                  {network.status === 'running' ? liveStats.active_globals : network.total_global_ids}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  <Clock size={16} />
+                  Số Frame đã xử lý
+                </span>
+                <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                  {network.status === 'running' ? liveStats.frame_id : network.total_frames}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  <Zap size={16} />
+                  Tốc độ xử lý (FPS)
+                </span>
+                <span style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--success)' }}>
+                  {network.status === 'running' ? liveStats.fps.toFixed(1) : network.avg_fps.toFixed(1)} FPS
+                </span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Download Box */}
+          {network.status === 'completed' && outputVideoUrl && (
+            <Card style={{ padding: 'var(--spacing-md)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
+                Tải xuống kết quả
+              </h3>
+              <a 
+                href={outputVideoUrl} 
+                download={`session_${networkId}_output.mp4`}
+                target="_blank" 
+                rel="noreferrer"
+                style={{ width: '100%' }}
+              >
+                <Button style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  backgroundColor: 'var(--accent-primary)',
+                  border: 'none'
+                }}>
+                  <Download size={18} />
+                  Tải Video Annotated kết quả (.mp4)
+                </Button>
+              </a>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* Add Camera Modal */}
+      {showAddCamModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1100
+        }}>
+          <Card style={{
+            width: '500px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            padding: '2rem',
+            position: 'relative',
+            backgroundColor: 'var(--bg-secondary)',
+            border: '1px solid var(--border-color)',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)'
+          }}>
+            <button 
+              onClick={() => {
+                setShowAddCamModal(false);
+                setCamName('');
+                setCamLocation('');
+                setVideoFile(null);
+                setCalibFile(null);
+              }}
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer'
+              }}
+            >
+              <X size={20} />
+            </button>
+
+            <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Plus size={20} color="var(--accent-primary)" />
+              Thêm Camera mới vào Mạng lưới
+            </h3>
+
+            <form onSubmit={handleSaveCamera} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Tên Camera *</label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Camera Cổng A, Camera Hành Lang B..."
+                  value={camName}
+                  onChange={(e) => setCamName(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'white',
+                    fontSize: '0.9rem'
+                  }}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Vị trí địa lý (Không bắt buộc)</label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: Tầng 1, Sảnh Chính..."
+                  value={camLocation}
+                  onChange={(e) => setCamLocation(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '6px',
+                    color: 'white',
+                    fontSize: '0.9rem'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Video nguồn (.mp4) *</label>
+                <div style={{
+                  border: '1px dashed var(--border-color)',
+                  borderRadius: '6px',
+                  padding: '16px',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  position: 'relative'
+                }}>
+                  <input
+                    type="file"
+                    accept="video/mp4"
+                    onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
+                    style={{
+                      position: 'absolute',
+                      top: 0, left: 0, width: '100%', height: '100%',
+                      opacity: 0, cursor: 'pointer'
+                    }}
+                  />
+                  <Upload size={24} style={{ opacity: 0.5, marginBottom: '6px' }} />
+                  <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 500 }}>
+                    {videoFile ? videoFile.name : 'Chọn file video nguồn (.mp4)'}
+                  </p>
+                  {videoFile && (
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                      {(videoFile.size / (1024 * 1024)).toFixed(2)} MB
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>File hiệu chuẩn Homography (.json)</label>
+                <div style={{
+                  border: '1px dashed var(--border-color)',
+                  borderRadius: '6px',
+                  padding: '16px',
+                  backgroundColor: 'var(--bg-tertiary)',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  position: 'relative'
+                }}>
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={(e) => setCalibFile(e.target.files?.[0] || null)}
+                    style={{
+                      position: 'absolute',
+                      top: 0, left: 0, width: '100%', height: '100%',
+                      opacity: 0, cursor: 'pointer'
+                    }}
+                  />
+                  <Upload size={24} style={{ opacity: 0.5, marginBottom: '6px' }} />
+                  <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 500 }}>
+                    {calibFile ? calibFile.name : 'Chọn file JSON ma trận hiệu chuẩn'}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', marginTop: '1rem' }}>
+                <Button 
+                  type="submit" 
+                  style={{
+                    flex: 1,
+                    height: '42px',
+                    background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary))',
+                    border: 'none'
+                  }}
+                >
+                  Khởi tạo & Upload
+                </Button>
+                <Button 
+                  type="button"
+                  onClick={() => {
+                    setShowAddCamModal(false);
+                    setCamName('');
+                    setCamLocation('');
+                    setVideoFile(null);
+                    setCalibFile(null);
+                  }}
+                  style={{
+                    flex: 1,
+                    height: '42px',
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-color)',
+                    color: 'white'
+                  }}
+                >
+                  Hủy
+                </Button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Uploading loading overlay */}
+      {uploadStep !== 'idle' && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(10, 11, 14, 0.85)',
+          backdropFilter: 'blur(8px)',
+          zIndex: 2000,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          padding: '2rem'
+        }}>
+          <div style={{
+            backgroundColor: 'var(--bg-secondary)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '12px',
+            padding: '2.5rem',
+            maxWidth: '450px',
+            width: '100%',
+            textAlign: 'center',
+            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '20px'
+          }}>
+            <div style={{ position: 'relative', width: '60px', height: '60px' }}>
+              <Loader2 className="animate-spin" size={60} color="var(--accent-primary)" style={{ animationDuration: '1.5s' }} />
+              <div style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Upload size={22} color="var(--accent-secondary)" />
+              </div>
+            </div>
+
+            <div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '8px' }}>Đang nạp dữ liệu camera</h3>
+              <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: '1.5', minHeight: '44px', margin: 0 }}>
+                {uploadProgressText}
+              </p>
+            </div>
+
+            {/* Stepper view */}
+            <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '8px', marginTop: '10px' }}>
+              <div style={{ flex: 1, height: '4px', borderRadius: '2px', backgroundColor: 'var(--accent-primary)' }} />
+              <div style={{
+                flex: 1,
+                height: '4px',
+                borderRadius: '2px',
+                backgroundColor: ['uploading_video', 'uploading_calib', 'finishing'].includes(uploadStep) ? 'var(--accent-primary)' : 'var(--bg-tertiary)'
+              }} />
+              <div style={{
+                flex: 1,
+                height: '4px',
+                borderRadius: '2px',
+                backgroundColor: ['uploading_calib', 'finishing'].includes(uploadStep) ? 'var(--accent-primary)' : 'var(--bg-tertiary)'
+              }} />
+              <div style={{
+                flex: 1,
+                height: '4px',
+                borderRadius: '2px',
+                backgroundColor: uploadStep === 'finishing' ? 'var(--accent-primary)' : 'var(--bg-tertiary)'
+              }} />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

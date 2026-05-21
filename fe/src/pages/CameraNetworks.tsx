@@ -2,21 +2,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../components/Common/Card';
 import { Button } from '../components/Common/Button';
-import { SessionService, CameraService, ConfigService } from '../api/services';
-import type { TrackingSession, Camera, TrackingConfig } from '../types';
+import { CameraNetworkService } from '../api/services';
+import type { CameraNetwork } from '../types';
 import { Eye, Trash2, Plus, Calendar, Film, RefreshCw, X } from 'lucide-react';
 
-export function Sessions() {
-  const [sessions, setSessions] = useState<TrackingSession[]>([]);
-  const [cameras, setCameras] = useState<Camera[]>([]);
-  const [sctConfigs, setSctConfigs] = useState<TrackingConfig[]>([]);
-  const [mctConfigs, setMctConfigs] = useState<TrackingConfig[]>([]);
-  
+export function CameraNetworks() {
+  const [networks, setNetworks] = useState<CameraNetwork[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [name, setName] = useState('');
-  const [selectedCameras, setSelectedCameras] = useState<number[]>([]);
-  const [sctConfigId, setSctConfigId] = useState<number | undefined>(undefined);
-  const [mctConfigId, setMctConfigId] = useState<number | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,16 +19,8 @@ export function Sessions() {
 
   const loadData = async () => {
     try {
-      const sess = await SessionService.getAll();
-      setSessions(sess);
-
-      const cams = await CameraService.getAll();
-      // Filter cams that actually have a source and calibration
-      setCameras(cams.filter(c => c.is_active));
-
-      const configs = await ConfigService.getAll();
-      setSctConfigs(configs.filter(c => c.config_type === 'sct'));
-      setMctConfigs(configs.filter(c => c.config_type === 'mct'));
+      const nets = await CameraNetworkService.getAll();
+      setNetworks(nets);
     } catch (err) {
       console.error(err);
     }
@@ -49,8 +34,8 @@ export function Sessions() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || selectedCameras.length === 0) {
-      setError('Vui lòng điền tên phiên và chọn ít nhất một camera.');
+    if (!name.trim()) {
+      setError('Vui lòng điền tên phiên.');
       return;
     }
 
@@ -58,20 +43,14 @@ export function Sessions() {
     setError(null);
     try {
       const payload = {
-        name,
-        camera_ids: selectedCameras,
-        sct_config_id: sctConfigId,
-        mct_config_id: mctConfigId
+        name: name.trim(),
       };
       
-      const newSession = await SessionService.create(payload);
+      const newSession = await CameraNetworkService.create(payload);
       setShowModal(false);
       setName('');
-      setSelectedCameras([]);
-      setSctConfigId(undefined);
-      setMctConfigId(undefined);
       loadData();
-      navigate(`/sessions/${newSession.id}`);
+      navigate(`/camera_networks/${newSession.id}`);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Khởi tạo phiên theo dõi thất bại');
     } finally {
@@ -83,7 +62,7 @@ export function Sessions() {
     e.stopPropagation();
     if (!window.confirm('Bạn có chắc muốn xóa phiên theo dõi này? Tất cả dữ liệu lưu trữ liên quan sẽ bị xóa.')) return;
     try {
-      await SessionService.delete(id);
+      await CameraNetworkService.delete(id);
       loadData();
     } catch (err) {
       console.error(err);
@@ -116,20 +95,12 @@ export function Sessions() {
     }
   };
 
-  const handleCameraToggle = (camId: number) => {
-    if (selectedCameras.includes(camId)) {
-      setSelectedCameras(selectedCameras.filter(id => id !== camId));
-    } else {
-      setSelectedCameras([...selectedCameras, camId]);
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.5px' }}>Phiên Theo Dõi (Sessions)</h2>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.5px' }}>Camera Networks (Sessions)</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Quản lý và kích hoạt tiến trình xử lý bám vết theo đối tượng đa camera</p>
         </div>
         
@@ -149,17 +120,17 @@ export function Sessions() {
 
       {/* Sessions list */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
-        {sessions.length === 0 ? (
+        {networks.length === 0 ? (
           <Card style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem', color: 'var(--text-secondary)' }}>
             <Film size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
             <p style={{ fontSize: '1rem' }}>Chưa có phiên theo dõi nào được khởi tạo</p>
             {canEdit && <Button onClick={() => setShowModal(true)} style={{ marginTop: '1rem' }}>Tạo ngay</Button>}
           </Card>
         ) : (
-          sessions.map((session) => (
+          networks.map((session) => (
             <Card 
               key={session.id}
-              onClick={() => navigate(`/sessions/${session.id}`)}
+              onClick={() => navigate(`/camera_networks/${session.id}`)}
               style={{
                 padding: 'var(--spacing-lg)',
                 cursor: 'pointer',
@@ -183,7 +154,7 @@ export function Sessions() {
 
               <div>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>Số lượng Camera</span>
-                <span style={{ fontSize: '0.95rem', fontWeight: 600 }}>{session.camera_ids.length} Cameras</span>
+                <span style={{ fontSize: '0.95rem', fontWeight: 600 }}>{session.cameras?.length || 0} Cameras</span>
               </div>
 
               <div>
@@ -207,7 +178,7 @@ export function Sessions() {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <Button 
-                  onClick={(e) => { e.stopPropagation(); navigate(`/sessions/${session.id}`); }}
+                  onClick={(e) => { e.stopPropagation(); navigate(`/camera_networks/${session.id}`); }}
                   style={{
                     padding: '8px',
                     borderRadius: '8px',
@@ -254,7 +225,7 @@ export function Sessions() {
           zIndex: 1100
         }}>
           <Card style={{
-            width: '600px',
+            width: '500px',
             maxHeight: '90vh',
             overflowY: 'auto',
             padding: '2rem',
@@ -307,98 +278,6 @@ export function Sessions() {
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Chọn nguồn Camera bám vết</label>
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '10px',
-                  maxHeight: '180px',
-                  overflowY: 'auto',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  padding: '10px',
-                  backgroundColor: 'var(--bg-tertiary)'
-                }}>
-                  {cameras.length === 0 ? (
-                    <p style={{ gridColumn: 'span 2', fontSize: '0.8rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '10px' }}>
-                      Chưa có camera khả dụng nào. Lưu ý camera phải được upload video và có hiệu chuẩn!
-                    </p>
-                  ) : (
-                    cameras.map(cam => (
-                      <div 
-                        key={cam.id} 
-                        onClick={() => handleCameraToggle(cam.id!)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px',
-                          padding: '6px 8px',
-                          borderRadius: '4px',
-                          backgroundColor: selectedCameras.includes(cam.id!) ? 'rgba(99, 102, 241, 0.1)' : 'transparent',
-                          border: selectedCameras.includes(cam.id!) ? '1px solid var(--accent-primary)' : '1px solid transparent',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedCameras.includes(cam.id!)}
-                          onChange={() => {}} // Implemented by parent div click
-                          style={{ cursor: 'pointer' }}
-                        />
-                        <span style={{ fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cam.name}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Hồ sơ cấu hình SCT</label>
-                  <select
-                    value={sctConfigId || ''}
-                    onChange={(e) => setSctConfigId(e.target.value ? Number(e.target.value) : undefined)}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      backgroundColor: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      color: 'white',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    <option value="">-- Mặc định hệ thống --</option>
-                    {sctConfigs.map(cfg => (
-                      <option key={cfg.id} value={cfg.id}>{cfg.name} {cfg.is_default && '(Mặc định)'}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Hồ sơ cấu hình MCT</label>
-                  <select
-                    value={mctConfigId || ''}
-                    onChange={(e) => setMctConfigId(e.target.value ? Number(e.target.value) : undefined)}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      backgroundColor: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      color: 'white',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    <option value="">-- Mặc định hệ thống --</option>
-                    {mctConfigs.map(cfg => (
-                      <option key={cfg.id} value={cfg.id}>{cfg.name} {cfg.is_default && '(Mặc định)'}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
               <div style={{ display: 'flex', gap: '12px', marginTop: '1rem' }}>
                 <Button 
                   type="submit" 
@@ -410,7 +289,7 @@ export function Sessions() {
                     border: 'none'
                   }}
                 >
-                  {loading ? 'Đang khởi tạo...' : 'Bắt đầu ngay'}
+                  {loading ? 'Đang khởi tạo...' : 'Tạo phiên theo dõi'}
                 </Button>
                 <Button 
                   type="button"

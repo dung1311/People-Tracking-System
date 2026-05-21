@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from .endpoints import cameras, tracks, search, frames, stream, auth, users, sessions, configs, ws
+from .endpoints import cameras, tracks, search, frames, stream, auth, users, camera_networks, configs, ws
 
 api_router = APIRouter()
 
@@ -9,7 +9,7 @@ api_router.include_router(users.router, prefix="/users", tags=["users"])
 
 # Enhanced resources routers
 api_router.include_router(cameras.router, prefix="/cameras", tags=["cameras"])
-api_router.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
+api_router.include_router(camera_networks.router, prefix="/camera_networks", tags=["camera_networks"])
 api_router.include_router(configs.router, prefix="/configs", tags=["configs"])
 api_router.include_router(ws.router, prefix="/ws", tags=["ws"])
 

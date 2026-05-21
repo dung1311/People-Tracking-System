@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Camera, Search, Menu, Film, Settings, LogOut, User as UserIcon } from 'lucide-react';
+import { Search, Menu, Film, LogOut, User as UserIcon } from 'lucide-react';
 import { Login } from '../../pages/Login';
 import '../../styles/components.css';
 
@@ -78,55 +78,16 @@ export function Layout({ children }: LayoutProps) {
           {/* Navigation Links */}
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <NavLink 
-              to="/" 
-              className={({ isActive }) => `btn ${isActive ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: 'flex-start', width: '100%', border: 'none', background: 'transparent', boxShadow: 'none' }}
-            >
-              {({ isActive }) => (
-                  <>
-                      <LayoutDashboard size={18} color={isActive ? 'var(--accent-primary)' : 'var(--text-secondary)'} />
-                      <span style={{ color: isActive ? 'white' : 'var(--text-secondary)', fontSize: '0.95rem' }}>Tổng quan</span>
-                  </>
-              )}
-            </NavLink>
-
-            <NavLink 
-              to="/cameras" 
-              className={({ isActive }) => `btn ${isActive ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: 'flex-start', width: '100%', border: 'none', background: 'transparent', boxShadow: 'none' }}
-            >
-               {({ isActive }) => (
-                  <>
-                      <Camera size={18} color={isActive ? 'var(--accent-primary)' : 'var(--text-secondary)'} />
-                      <span style={{ color: isActive ? 'white' : 'var(--text-secondary)', fontSize: '0.95rem' }}>Quản lý Camera</span>
-                  </>
-              )}
-            </NavLink>
-
-            <NavLink 
-              to="/sessions" 
+              to="/camera_networks" 
               className={({ isActive }) => `btn ${isActive ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: 'flex-start', width: '100%', border: 'none', background: 'transparent', boxShadow: 'none' }}
             >
                {({ isActive }) => (
                   <>
                       <Film size={18} color={isActive ? 'var(--accent-primary)' : 'var(--text-secondary)'} />
-                      <span style={{ color: isActive ? 'white' : 'var(--text-secondary)', fontSize: '0.95rem' }}>Phiên bám vết</span>
+                      <span style={{ color: isActive ? 'white' : 'var(--text-secondary)', fontSize: '0.95rem' }}>Camera Networks</span>
                   </>
-              )}
-            </NavLink>
-
-            <NavLink 
-              to="/configs" 
-              className={({ isActive }) => `btn ${isActive ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ justifyContent: 'flex-start', width: '100%', border: 'none', background: 'transparent', boxShadow: 'none' }}
-            >
-               {({ isActive }) => (
-                  <>
-                      <Settings size={18} color={isActive ? 'var(--accent-primary)' : 'var(--text-secondary)'} />
-                      <span style={{ color: isActive ? 'white' : 'var(--text-secondary)', fontSize: '0.95rem' }}>Hồ sơ cấu hình</span>
-                  </>
-              )}
+               )}
             </NavLink>
 
             <NavLink 
@@ -137,7 +98,7 @@ export function Layout({ children }: LayoutProps) {
               {({ isActive }) => (
                   <>
                       <Search size={18} color={isActive ? 'var(--accent-primary)' : 'var(--text-secondary)'} />
-                      <span style={{ color: isActive ? 'white' : 'var(--text-secondary)', fontSize: '0.95rem' }}>Truy vết Re-ID</span>
+                      <span style={{ color: isActive ? 'white' : 'var(--text-secondary)', fontSize: '0.95rem' }}>Tìm kiếm đối tượng</span>
                   </>
               )}
             </NavLink>

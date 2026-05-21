@@ -1,5 +1,6 @@
 export interface Camera {
   id?: number;
+  network_id?: number;
   name: string;
   source: string;
   source_type: string;
@@ -16,6 +17,7 @@ export interface Camera {
 }
 
 export interface CameraCreate {
+  network_id?: number;
   name: string;
   source: string;
   source_type?: string;
@@ -44,13 +46,14 @@ export interface TrackingConfig {
   updated_at?: string;
 }
 
-export interface TrackingSession {
+
+export interface CameraNetwork {
+  cameras?: Camera[];
   id?: number;
   name: string;
   status: 'created' | 'running' | 'stopping' | 'completed' | 'failed';
   sct_config: Record<string, any>;
   mct_config: Record<string, any>;
-  camera_ids: number[];
   started_at?: string;
   stopped_at?: string;
   output_video_path?: string;
@@ -61,8 +64,10 @@ export interface TrackingSession {
   created_at?: string;
 }
 
+
 export interface SearchMatch {
   camera_id: number;
+  camera_name?: string;
   person_id: number;
   best_score: number;
   start_time: string;

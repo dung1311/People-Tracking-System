@@ -1,12 +1,13 @@
 import cv2
 import numpy as np
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Query
 from sqlmodel import Session, select
 from typing import List
 from datetime import datetime
 
 from database.session import get_session
 from models.track import Track
+from models.camera import Camera
 from core.model_loader import get_model_loader, ModelLoader
 from utils.box import crop_detections
 
@@ -15,6 +16,7 @@ router = APIRouter()
 @router.post("/search")
 async def search_person(
     file: UploadFile = File(...),
+    network_id: int | None = Query(None),
     limit: int = 20,
     threshold: float = 0.5,
     session: Session = Depends(get_session),
@@ -73,10 +75,19 @@ async def search_person(
     
     # 4. Search in DB
     # Fetch more results to allow for grouping (e.g., 200 raw frames -> ~10-20 unique sightings)
-    
-    query = select(Track, Track.feature.cosine_distance(query_vector)).order_by(Track.feature.cosine_distance(query_vector)).limit(200)
+    query = select(Track, Track.feature.cosine_distance(query_vector))
+    if network_id is not None:
+        query = query.join(Camera, Track.camera_id == Camera.id).where(Camera.network_id == network_id)
+    query = query.order_by(Track.feature.cosine_distance(query_vector)).limit(200)
     results = session.exec(query).all()
     
+    # Pre-fetch camera names for the tracks found
+    camera_ids = list({track.camera_id for track, _ in results})
+    cameras_map = {}
+    if camera_ids:
+        cameras = session.exec(select(Camera).where(Camera.id.in_(camera_ids))).all()
+        cameras_map = {cam.id: cam.name for cam in cameras}
+
     # Process results
     # Group by (camera_id, person_id)
     grouped_tracks = {}
@@ -86,6 +97,7 @@ async def search_person(
         if key not in grouped_tracks:
             grouped_tracks[key] = {
                 "camera_id": track.camera_id,
+                "camera_name": cameras_map.get(track.camera_id, f"Camera {track.camera_id}"),
                 "person_id": track.person_id,
                 "best_score": dist, # Using distance as score (lower is better)
                 "start_time": track.timestamp,

@@ -7,10 +7,11 @@ import threading
 import base64
 from datetime import datetime
 from typing import Dict, List, Any, Callable
-from sqlmodel import Session, select
+from sqlmodel import Session, select, delete
+from models.track import Track
 
 from database.session import engine
-from models.tracking_session import TrackingSession
+from models.camera_network import CameraNetwork
 from models.camera import Camera
 from core.minio_client import get_minio_client
 from pipelines.mct_pipeline_2 import MCTPipeline2
@@ -96,6 +97,33 @@ class StreamableMCTPipeline2(MCTPipeline2):
 
                 self._write_mot(mot_files, per_cam, mapping, frame_count)
                 self._write_video(frames, per_cam, mapping, frame_count, t0)
+
+                # Save global tracks to database in real-time
+                try:
+                    with Session(engine) as db_sess:
+                        for cid, tracks in per_cam.items():
+                            for t in tracks:
+                                if t.person_id is None:
+                                    continue
+                                gid = mapping.get((cid, t.person_id))
+                                if gid is None:
+                                    continue
+                                
+                                feat = t.features[-1].tolist() if t.features else None
+                                db_track = Track(
+                                    camera_id=cid,
+                                    person_id=gid,  # Store the global ID as person_id
+                                    frame_id=frame_count,
+                                    bbox=t.bbox,
+                                    score=t.score,
+                                    class_id=t.class_id,
+                                    timestamp=t.timestamp,
+                                    feature=feat
+                                )
+                                db_sess.add(db_track)
+                        db_sess.commit()
+                except Exception as e:
+                    logger.error(f"Error saving global tracks to database: {e}")
 
                 if frame_count % 10 == 0:
                     elapsed = time.time() - t0
@@ -192,7 +220,7 @@ class SessionManager:
         
         # 1. Update session status to running in DB
         with Session(engine) as db:
-            session = db.get(TrackingSession, session_id)
+            session = db.get(CameraNetwork, session_id)
             if not session:
                 logger.error(f"Session {session_id} not found in DB")
                 return
@@ -201,13 +229,125 @@ class SessionManager:
             db.add(session)
             db.commit()
             db.refresh(session)
-            
             sct_config = session.sct_config
+            if not isinstance(sct_config, dict) or "DETECTION" not in sct_config:
+                logger.warning(f"SCT config for Session {session_id} is missing or has old structure. Auto-patching using configs/sct_config.yaml.")
+                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                sct_yaml_path = os.path.join(base_dir, "configs", "sct_config.yaml")
+                loaded_sct = {}
+                if os.path.exists(sct_yaml_path):
+                    try:
+                        with open(sct_yaml_path, "r") as f:
+                            loaded_sct = yaml.safe_load(f)
+                    except Exception as e:
+                        logger.error(f"Failed to read fallback configs/sct_config.yaml: {e}")
+                
+                if loaded_sct and "DETECTION" in loaded_sct:
+                    sct_config = loaded_sct
+                else:
+                    sct_config = {
+                        "DETECTION": {
+                            "name": "yolov11",
+                            "yolov11": {
+                                "model_path": "weights/yolo11x.pt",
+                                "task": "detect",
+                                "imgsz": 640,
+                                "conf_thres": 0.5,
+                                "iou_thres": 0.7,
+                                "device": "cpu",
+                                "classes": 0,
+                                "max_det": 300
+                            }
+                        },
+                        "POSE_ESTIMATION": {
+                            "name": "rtmpose",
+                            "rtmpose": {
+                                "device": "cpu",
+                                "model_path": "weights/rtmpose-l_256x192/end2end.onnx",
+                                "input_size": [192, 256]
+                            }
+                        },
+                        "TRACKING": {
+                            "name": "sort",
+                            "sort": {
+                                "max_age": 30,
+                                "min_hits": 3,
+                                "iou_threshold": 0.3
+                            }
+                        },
+                        "TRACK_MANAGER": {
+                            "is_join_track": True,
+                            "smooth_factor": 0.1,
+                            "appearance_threshold": 0.5,
+                            "GALLERY": {
+                                "max_live_time": 24000,
+                                "min_hits": 3,
+                                "max_features": 50
+                            },
+                            "MATCHING": {
+                                "distance_threshold": 0.5
+                            },
+                            "EMBEDDING": {
+                                "name": "fastreid",
+                                "fastreid": "configs/osnet-ain_x1.0-ibn_512_256x192_ccdmmps.yaml"
+                            }
+                        }
+                    }
+                session.sct_config = sct_config
+                db.add(session)
+                db.commit()
+                db.refresh(session)
+            
+            # Dynamic device patching based on actual PyTorch CUDA availability
+            device_str = "cpu"
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    device_str = "cuda"
+            except Exception:
+                pass
+
+            sct_updated = False
+            if isinstance(sct_config, dict):
+                if "DETECTION" in sct_config and "yolov11" in sct_config["DETECTION"]:
+                    current_device = sct_config["DETECTION"]["yolov11"].get("device")
+                    if current_device != device_str:
+                        logger.info(f"Dynamically patching yolov11 device from '{current_device}' to '{device_str}' for Session {session_id}")
+                        sct_config["DETECTION"]["yolov11"]["device"] = device_str
+                        sct_updated = True
+                
+                if "POSE_ESTIMATION" in sct_config and "rtmpose" in sct_config["POSE_ESTIMATION"]:
+                    current_device = sct_config["POSE_ESTIMATION"]["rtmpose"].get("device")
+                    if current_device != device_str:
+                        logger.info(f"Dynamically patching rtmpose device from '{current_device}' to '{device_str}' for Session {session_id}")
+                        sct_config["POSE_ESTIMATION"]["rtmpose"]["device"] = device_str
+                        sct_updated = True
+
+            if sct_updated:
+                session.sct_config = sct_config
+                db.add(session)
+                db.commit()
+                db.refresh(session)
+            
             mct_config = session.mct_config
-            camera_ids = session.camera_ids
+            camera_ids = [cam.id for cam in session.cameras] if session.cameras else []
 
             # Get active cameras
-            cameras = db.exec(select(Camera).where(Camera.id.in_(camera_ids))).all()
+            cameras_db = db.exec(select(Camera).where(Camera.id.in_(camera_ids))).all()
+            from types import SimpleNamespace
+            cameras = [
+                SimpleNamespace(
+                    id=cam.id,
+                    calibration_path=cam.calibration_path,
+                    source=cam.source
+                )
+                for cam in cameras_db
+            ]
+
+            # Clear old tracks for these cameras
+            if camera_ids:
+                db.exec(delete(Track).where(Track.camera_id.in_(camera_ids)))
+                db.commit()
 
         # 2. Prepare paths and config file
         temp_dir = f"data/temp_sessions/{session_id}"
@@ -254,20 +394,45 @@ class SessionManager:
                 "calibration": local_calib_path
             }
 
+        # Ensure MATCHING config has correct structure for MCTPipeline2 (homography & visual weights)
+        db_matching = mct_config.get("MATCHING", {})
+        if not isinstance(db_matching, dict) or "weights" not in db_matching or "homography" not in db_matching.get("weights", {}):
+            logger.warning(f"MCT config MATCHING section for Session {session_id} is missing or has old structure. Auto-patching to modern weights/thresholds.")
+            matching_cfg = {
+                "weights": {
+                    "homography": 0.5,
+                    "visual": 0.5
+                },
+                "thresholds": {
+                    "homography": 10.0,
+                    "visual_gate": 0.5,
+                    "homo_gate": 10.0,
+                    "combined": 0.6,
+                    "reid": 0.4
+                }
+            }
+        else:
+            matching_cfg = db_matching
+
+        # Ensure GLOBAL_TRACK has correct keys for MCTPipeline2
+        db_global_track = mct_config.get("GLOBAL_TRACK", {})
+        if not isinstance(db_global_track, dict) or "max_lost_age" not in db_global_track:
+            global_track_cfg = {
+                "max_lost_age": 300,
+                "feature_smooth": 0.1
+            }
+        else:
+            global_track_cfg = db_global_track
+
         # 3. Create full mct config dictionary
         full_mct_cfg = {
-            "MATCHING": mct_config.get("MATCHING", {
-                "thresholds": {"spatial_thresh": 50.0, "reid_thresh": 0.45, "time_thresh": 30}
-            }),
-            "GLOBAL_TRACK": mct_config.get("GLOBAL_TRACK", {
-                "max_lost_frames": 100,
-                "confirm_frames": 3
-            }),
+            "MATCHING": matching_cfg,
+            "GLOBAL_TRACK": global_track_cfg,
             "OUTPUT": {
                 "video": f"{temp_dir}/mct_output.mp4",
                 "txt_dir": f"{temp_dir}/txt",
-                "fps": 25,
-                "draw_local": True
+                "fps": mct_config.get("OUTPUT", {}).get("fps", 25),
+                "draw_local": mct_config.get("OUTPUT", {}).get("draw_local", False)
             },
             "CAMERAS": cameras_cfg
         }
@@ -302,10 +467,51 @@ class SessionManager:
             
             out_video_object = f"{session_id}/output.mp4"
             if os.path.exists(f"{temp_dir}/output.mp4"):
+                # Re-encode output.mp4 to highly compatible H.264 (libx264) for browser/player native playback
+                raw_video_path = f"{temp_dir}/output_raw.mp4"
+                h264_video_path = f"{temp_dir}/output.mp4"
+                try:
+                    import subprocess
+                    logger.info("Converting tracking output video to highly compatible H264 format using ffmpeg...")
+                    os.rename(h264_video_path, raw_video_path)
+                    
+                    import sys
+                    ffmpeg_executable = "ffmpeg"
+                    bin_dir = os.path.dirname(sys.executable)
+                    env_ffmpeg = os.path.join(bin_dir, "ffmpeg")
+                    if os.path.exists(env_ffmpeg):
+                        ffmpeg_executable = env_ffmpeg
+                        logger.info(f"Using environment ffmpeg binary at: {ffmpeg_executable}")
+                    
+                    cmd = [
+                        ffmpeg_executable, "-y",
+                        "-i", raw_video_path,
+                        "-c:v", "libx264",
+                        "-pix_fmt", "yuv420p",
+                        "-preset", "fast",
+                        h264_video_path
+                    ]
+                    # Run re-encoding with 60s timeout
+                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=60.0)
+                    if result.returncode == 0:
+                        logger.info("ffmpeg conversion to H.264 (yuv420p) completed successfully.")
+                    else:
+                        logger.error(f"ffmpeg conversion failed (code {result.returncode}): {result.stderr}")
+                        # Fallback to original
+                        if os.path.exists(raw_video_path):
+                            if os.path.exists(h264_video_path):
+                                os.remove(h264_video_path)
+                            os.rename(raw_video_path, h264_video_path)
+                except Exception as e:
+                    logger.error(f"Failed to run ffmpeg video conversion: {e}")
+                    # Fallback to original
+                    if os.path.exists(raw_video_path) and not os.path.exists(h264_video_path):
+                        os.rename(raw_video_path, h264_video_path)
+
                 minio.upload_file(
                     bucket_name="recordings",
                     object_name=out_video_object,
-                    file_data=f"{temp_dir}/output.mp4",
+                    file_data=h264_video_path,
                     content_type="video/mp4"
                 )
                 
@@ -331,7 +537,7 @@ class SessionManager:
 
         # 6. Save final session statistics to DB
         with Session(engine) as db:
-            session = db.get(TrackingSession, session_id)
+            session = db.get(CameraNetwork, session_id)
             if session:
                 session.status = status_str
                 session.stopped_at = datetime.utcnow()
