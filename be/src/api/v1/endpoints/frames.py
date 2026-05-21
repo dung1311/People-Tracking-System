@@ -30,6 +30,19 @@ def get_frame(
     
     source = camera.source
     
+    # Resolve from MinIO if stored in MinIO
+    if isinstance(source, str) and source.startswith("videos/"):
+        from core.minio_client import get_minio_client
+        minio = get_minio_client()
+        if not minio.fallback_mode:
+            object_name = source.replace("videos/", "", 1)
+            cached_video = f"data/temp_frames_cam_{camera_id}.mp4"
+            os.makedirs("data", exist_ok=True)
+            minio.download_file("videos", object_name, cached_video)
+            source = cached_video
+        else:
+            source = f"data/{source}"
+    
     # Quick fix for the demo file context
     if source == "mct_demo.mp4":
         # Check if file exists in current cwd or parent

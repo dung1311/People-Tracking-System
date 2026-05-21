@@ -34,6 +34,17 @@ async def stream_camera(camera_id: int):
         video_source = camera.source
         if video_source.isdigit():
             video_source = int(video_source)
+        elif isinstance(video_source, str) and video_source.startswith("videos/"):
+            from core.minio_client import get_minio_client
+            minio = get_minio_client()
+            if not minio.fallback_mode:
+                object_name = video_source.replace("videos/", "", 1)
+                cached_video = f"data/temp_stream_cam_{camera_id}.mp4"
+                os.makedirs("data", exist_ok=True)
+                minio.download_file("videos", object_name, cached_video)
+                video_source = cached_video
+            else:
+                video_source = f"data/{video_source}"
             
     except Exception as e:
         logger.error(f"Error fetching camera: {e}")

@@ -20,10 +20,19 @@ engine = create_engine(
     url=DATABASE_URL,
 )
 
+from sqlalchemy import text
+
 def init_db():
     try: 
+        # Ensure pgvector extension is enabled in Postgres
+        with Session(engine) as session:
+            session.exec(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            session.commit()
+            
         SQLModel.metadata.create_all(engine)
         logger.info("Init database success")
+        from database.init_data import seed_db
+        seed_db()
     except Exception as e:
         logger.error("Can not init database")
         raise e

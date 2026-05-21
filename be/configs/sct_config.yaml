@@ -6,14 +6,14 @@ DETECTION:
     imgsz: 640
     conf_thres: 0.5
     iou_thres: 0.7
-    device: cuda
+    device: cpu
     classes: 0
     max_det: 300
 
 POSE_ESTIMATION:
   name: rtmpose
   rtmpose:
-    device: cuda
+    device: cpu
     model_path: weights/rtmpose-l_256x192/end2end.onnx
     input_size: [192, 256]
 

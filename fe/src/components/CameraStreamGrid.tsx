@@ -39,7 +39,7 @@ const Modal = ({ children, onClose }: { children: React.ReactNode, onClose: () =
 export const CameraStreamGrid: React.FC<Props> = ({ cameras }) => {
     const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null);
 
-    const getStreamUrl = (id: number) => `http://localhost:8000/api/v1/stream/camera/${id}`;
+    const getStreamUrl = (id?: number) => id ? `http://localhost:8000/api/v1/stream/camera/${id}` : '';
 
     return (
         <>
@@ -63,14 +63,16 @@ export const CameraStreamGrid: React.FC<Props> = ({ cameras }) => {
                             className="group" 
                             onClick={() => setSelectedCamera(cam)}
                         >
-                            <img 
-                                src={getStreamUrl(cam.id)} 
-                                alt={cam.name}
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                onError={(e) => {
-                                    (e.target as HTMLImageElement).style.display = 'none';
-                                }}
-                            />
+                            {cam.id && (
+                                <img 
+                                    src={getStreamUrl(cam.id)} 
+                                    alt={cam.name}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    onError={(e) => {
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                />
+                            )}
                             {/* Overlay Icon */}
                             <div style={{
                                 position: 'absolute',
@@ -95,7 +97,7 @@ export const CameraStreamGrid: React.FC<Props> = ({ cameras }) => {
                 ))}
             </div>
 
-            {selectedCamera && (
+            {selectedCamera && selectedCamera.id && (
                 <Modal onClose={() => setSelectedCamera(null)}>
                     <div style={{ background: '#000', borderRadius: '8px', overflow: 'hidden' }}>
                          <img 

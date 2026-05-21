@@ -13,6 +13,9 @@ async def lifespan(app: FastAPI):
     # Startup
     print("Starting up...")
     init_db()
+    # Initialize MinIO
+    from core.minio_client import get_minio_client
+    get_minio_client()
     # Preload models
     get_model_loader()
     yield
