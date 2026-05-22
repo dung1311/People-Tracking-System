@@ -17,6 +17,15 @@ class Embedding(BaseEmbedder):
 
         self.cfg = get_cfg()
         self.cfg.merge_from_other_cfg(CfgNode(cfg_dict))
+        
+        # Auto-patch device configuration based on PyTorch CUDA availability
+        try:
+            import torch
+            if torch.cuda.is_available():
+                self.cfg.MODEL.DEVICE = "cuda"
+        except Exception:
+            pass
+            
         self.predictor = DefaultPredictor(self.cfg)
 
     def _preprocess(self, imgs_bgr):

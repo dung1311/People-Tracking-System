@@ -258,6 +258,15 @@ def delete_network(
     except Exception as e:
         logger.warning(f"Failed to delete session video from storage: {e}")
         
+    # Delete all dependent tracks and video segments referencing cameras in this network
+    camera_ids = [cam.id for cam in db_network.cameras] if db_network.cameras else []
+    if camera_ids:
+        from models.track import Track
+        from models.video_segment import VideoSegment
+        from sqlmodel import delete
+        session.exec(delete(Track).where(Track.camera_id.in_(camera_ids)))
+        session.exec(delete(VideoSegment).where(VideoSegment.camera_id.in_(camera_ids)))
+        
     session.delete(db_network)
     session.commit()
     return {"ok": True}

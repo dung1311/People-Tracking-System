@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 
@@ -11,6 +12,7 @@ from sqlmodel import select
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_download_lock = threading.Lock()
 
 # Config is now loaded dynamically per camera
 
@@ -40,8 +42,11 @@ async def stream_camera(camera_id: int):
             if not minio.fallback_mode:
                 object_name = video_source.replace("videos/", "", 1)
                 cached_video = f"data/temp_stream_cam_{camera_id}.mp4"
-                os.makedirs("data", exist_ok=True)
-                minio.download_file("videos", object_name, cached_video)
+                if not os.path.exists(cached_video) or os.path.getsize(cached_video) == 0:
+                    with _download_lock:
+                        if not os.path.exists(cached_video) or os.path.getsize(cached_video) == 0:
+                            os.makedirs("data", exist_ok=True)
+                            minio.download_file("videos", object_name, cached_video)
                 video_source = cached_video
             else:
                 video_source = f"data/{video_source}"

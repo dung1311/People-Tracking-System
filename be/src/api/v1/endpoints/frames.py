@@ -4,11 +4,13 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlmodel import Session
 import io
+import threading
 
 from database.session import get_session
 from models.camera import Camera
 
 router = APIRouter()
+_download_lock = threading.Lock()
 
 @router.get("/{camera_id}/{frame_id}")
 def get_frame(
@@ -37,8 +39,11 @@ def get_frame(
         if not minio.fallback_mode:
             object_name = source.replace("videos/", "", 1)
             cached_video = f"data/temp_frames_cam_{camera_id}.mp4"
-            os.makedirs("data", exist_ok=True)
-            minio.download_file("videos", object_name, cached_video)
+            if not os.path.exists(cached_video) or os.path.getsize(cached_video) == 0:
+                with _download_lock:
+                    if not os.path.exists(cached_video) or os.path.getsize(cached_video) == 0:
+                        os.makedirs("data", exist_ok=True)
+                        minio.download_file("videos", object_name, cached_video)
             source = cached_video
         else:
             source = f"data/{source}"

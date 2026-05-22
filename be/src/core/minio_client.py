@@ -134,6 +134,11 @@ class MinIOClient:
             return f"/static/{bucket_name}/{object_name}"
 
     def download_file(self, bucket_name: str, object_name: str, file_path: str):
+        # Ensure parent directory of target file exists
+        parent_dir = os.path.dirname(file_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+            
         if self.fallback_mode:
             import shutil
             local_path = f"data/{bucket_name}/{object_name}"

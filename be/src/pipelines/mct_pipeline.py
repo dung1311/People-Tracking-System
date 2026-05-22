@@ -195,14 +195,31 @@ class MCTPipeline:
 
         logger.info("MCT pipeline starting with %d cameras", len(self.workers))
 
+        import concurrent.futures
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(self.workers))
         try:
             while True:
-                # Step each camera one frame
+                # Step each camera one frame in parallel
                 any_alive = False
-                for worker in self.workers.values():
-                    if not worker.stopped:
-                        if worker.process_next_frame():
-                            any_alive = True
+                futures = {
+                    executor.submit(worker.process_next_frame): cam_id
+                    for cam_id, worker in self.workers.items() if not worker.stopped
+                }
+                
+                results = {}
+                for fut in concurrent.futures.as_completed(futures):
+                    cam_id = futures[fut]
+                    try:
+                        results[cam_id] = fut.result()
+                    except Exception as e:
+                        logger.error(f"Error in camera worker {cam_id}: {e}")
+                        results[cam_id] = False
+                        
+                for cam_id, res in results.items():
+                    if res:
+                        any_alive = True
+                        
                 if not any_alive:
                     break
 
@@ -297,6 +314,7 @@ class MCTPipeline:
         except KeyboardInterrupt:
             logger.info("MCT pipeline interrupted by user")
         finally:
+            executor.shutdown(wait=True)
             for worker in self.workers.values():
                 worker.release()
             if writer is not None:

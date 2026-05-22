@@ -49,6 +49,7 @@ class StreamableMCTPipeline2(MCTPipeline2):
         self._frame_count_captured = 0
         self._fps_captured = 25.0
         self.should_stop = False
+        self._pending_db_tracks = []
         super().__init__(sct_config, mct_config_path)
 
     def _write_video(self, frames, per_cam, mapping, frame_count, t0):
@@ -80,14 +81,30 @@ class StreamableMCTPipeline2(MCTPipeline2):
         frame_count = 0
         t0 = time.time()
 
-        logger.info("Streamable MCT Pipeline v2 starting – %d cameras", len(self.workers))
+        import concurrent.futures
 
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(self.workers))
         try:
             while not self.should_stop:
                 alive = False
-                for w in self.workers.values():
-                    if not w.stopped and w.process_next_frame():
+                futures = {
+                    executor.submit(w.process_next_frame): cid
+                    for cid, w in self.workers.items() if not w.stopped
+                }
+                
+                results = {}
+                for fut in concurrent.futures.as_completed(futures):
+                    cid = futures[fut]
+                    try:
+                        results[cid] = fut.result()
+                    except Exception as e:
+                        logger.error(f"Error in camera worker {cid}: {e}")
+                        results[cid] = False
+                        
+                for cid, res in results.items():
+                    if res:
                         alive = True
+                        
                 if not alive:
                     break
                 frame_count += 1
@@ -100,28 +117,35 @@ class StreamableMCTPipeline2(MCTPipeline2):
 
                 # Save global tracks to database in real-time
                 try:
-                    with Session(engine) as db_sess:
-                        for cid, tracks in per_cam.items():
-                            for t in tracks:
-                                if t.person_id is None:
-                                    continue
-                                gid = mapping.get((cid, t.person_id))
-                                if gid is None:
-                                    continue
-                                
-                                feat = t.features[-1].tolist() if t.features else None
-                                db_track = Track(
-                                    camera_id=cid,
-                                    person_id=gid,  # Store the global ID as person_id
-                                    frame_id=frame_count,
-                                    bbox=t.bbox,
-                                    score=t.score,
-                                    class_id=t.class_id,
-                                    timestamp=t.timestamp,
-                                    feature=feat
-                                )
-                                db_sess.add(db_track)
-                        db_sess.commit()
+                    for cid, tracks in per_cam.items():
+                        for t in tracks:
+                            if t.person_id is None:
+                                continue
+                            gid = mapping.get((cid, t.person_id))
+                            if gid is None:
+                                continue
+                            
+                            feat = t.features[-1].tolist() if t.features else None
+                            db_track = Track(
+                                camera_id=cid,
+                                person_id=gid,  # Store the global ID as person_id
+                                frame_id=frame_count,
+                                bbox=t.bbox,
+                                score=t.score,
+                                class_id=t.class_id,
+                                timestamp=t.timestamp,
+                                feature=feat
+                            )
+                            self._pending_db_tracks.append(db_track)
+
+                    # Batch commit every 10 frames or if pipeline is stopping
+                    if frame_count % 10 == 0 or self.should_stop:
+                        if self._pending_db_tracks:
+                            with Session(engine) as db_sess:
+                                for db_track in self._pending_db_tracks:
+                                    db_sess.add(db_track)
+                                db_sess.commit()
+                            self._pending_db_tracks.clear()
                 except Exception as e:
                     logger.error(f"Error saving global tracks to database: {e}")
 
@@ -138,6 +162,19 @@ class StreamableMCTPipeline2(MCTPipeline2):
             logger.error(f"Pipeline running error in Session {self.session_id}: {e}")
             raise e
         finally:
+            executor.shutdown(wait=True)
+            # Flush any remaining pending DB tracks on exit
+            try:
+                if hasattr(self, "_pending_db_tracks") and self._pending_db_tracks:
+                    logger.info(f"Flushing {len(self._pending_db_tracks)} remaining tracks to database...")
+                    with Session(engine) as db_sess:
+                        for db_track in self._pending_db_tracks:
+                            db_sess.add(db_track)
+                        db_sess.commit()
+                    self._pending_db_tracks.clear()
+            except Exception as e:
+                logger.error(f"Error flushing pending tracks on exit: {e}")
+
             for w in self.workers.values():
                 w.release()
             if self._writer:
@@ -153,6 +190,7 @@ class SessionManager:
         self.active_threads: Dict[int, threading.Thread] = {}
         self.active_pipelines: Dict[int, StreamableMCTPipeline2] = {}
         self.ws_callbacks: Dict[int, List[Callable]] = {}
+        self.last_broadcast_time: Dict[int, float] = {}
 
     def register_ws_callback(self, session_id: int, callback: Callable):
         if session_id not in self.ws_callbacks:
@@ -170,8 +208,26 @@ class SessionManager:
         if not callbacks:
             return
             
+        # Throttle to max 10 FPS to prevent choking the WebSocket and browser thread
+        now = time.time()
+        last_time = self.last_broadcast_time.get(session_id, 0.0)
+        if now - last_time < 0.1:  # Max 10 FPS
+            return
+        self.last_broadcast_time[session_id] = now
+            
+        # Resize to reduce CPU, memory, and network overhead for streaming
+        h, w = image.shape[:2]
+        max_width = 1280
+        if w > max_width:
+            scale = max_width / w
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            image_to_encode = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        else:
+            image_to_encode = image
+
         # Compress grid frame to JPEG and encode to base64
-        ret, buffer = cv2.imencode('.jpg', image)
+        ret, buffer = cv2.imencode('.jpg', image_to_encode)
         if not ret:
             return
             

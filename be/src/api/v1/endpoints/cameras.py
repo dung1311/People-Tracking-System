@@ -168,7 +168,8 @@ def get_calibration(
         raise HTTPException(status_code=404, detail="Calibration file not found for this camera")
         
     minio = get_minio_client()
-    temp_path = f"data/temp_calib_{camera_id}.json"
+    import uuid
+    temp_path = f"data/temp_calib_{camera_id}_{uuid.uuid4().hex}.json"
     try:
         minio.download_file("calibrations", camera.calibration_path, temp_path)
         with open(temp_path, "r") as f:
@@ -332,7 +333,8 @@ def check_camera_connection(
                     "ok": False,
                     "message": f"Video file '{object_name}' not found in MinIO bucket 'videos'."
                 }
-            temp_check_path = f"data/temp_check_{int(time.time())}.mp4"
+            import uuid
+            temp_check_path = f"data/temp_check_{int(time.time())}_{uuid.uuid4().hex[:8]}.mp4"
             os.makedirs("data", exist_ok=True)
             try:
                 minio.download_file("videos", object_name, temp_check_path)

@@ -460,13 +460,30 @@ class MCTPipeline3:
         t0 = time.time()
 
         logger.info("MCT Pipeline v3 starting – %d cameras", len(self.workers))
+        import concurrent.futures
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(self.workers))
 
         try:
             while True:
                 alive = False
-                for w in self.workers.values():
-                    if not w.stopped and w.process_next_frame():
+                futures = {
+                    executor.submit(w.process_next_frame): cid
+                    for cid, w in self.workers.items() if not w.stopped
+                }
+                
+                results = {}
+                for fut in concurrent.futures.as_completed(futures):
+                    cid = futures[fut]
+                    try:
+                        results[cid] = fut.result()
+                    except Exception as e:
+                        logger.error(f"Error in camera worker {cid}: {e}")
+                        results[cid] = False
+                        
+                for cid, res in results.items():
+                    if res:
                         alive = True
+                        
                 if not alive:
                     break
                 frame_count += 1
@@ -500,14 +517,10 @@ class MCTPipeline3:
                     if fh is None:
                         continue
                     for t in per_cam_global.get(cid, []):
-                        gid = t.person_id
                         x1, y1, x2, y2 = t.bbox
-                        if gid not in self._known_gids:
-                            if not self._draw_local:
-                                continue
                         fh.write(
-                            f"{frame_count},{gid},{x1:.1f},{y1:.1f},"
-                            f"{x2 - x1:.1f},{y2 - y1:.1f},1,-1,-1,-1\n"
+                            f"{frame_count},{t.person_id},{x1:.1f},{y1:.1f},"
+                            f"{x2-x1:.1f},{y2-y1:.1f},1,-1,-1,-1\n"
                         )
 
                 # Grid video
@@ -515,11 +528,12 @@ class MCTPipeline3:
                 for cid in self.cam_ids_sorted:
                     if cid not in frames:
                         continue
-                    ann.append(self._draw(
+                    annotated = self._draw(
                         frames[cid].copy(),
                         per_cam_global.get(cid, []),
                         cid, frame_count,
-                    ))
+                    )
+                    ann.append(annotated)
                 if ann:
                     grid = draw_grid(ann, self.cam_names)
                     elapsed = time.time() - t0
@@ -548,6 +562,7 @@ class MCTPipeline3:
         except KeyboardInterrupt:
             logger.info("Pipeline interrupted")
         finally:
+            executor.shutdown(wait=True)
             for w in self.workers.values():
                 w.release()
             if writer:
