@@ -74,9 +74,9 @@ export function CameraNetworkDetail() {
 
   useEffect(() => {
     loadNetwork();
-    // Poll network status changes if it's created or failed
+    // Poll network status changes only if it's stopping
     const interval = setInterval(() => {
-      if (network?.status !== 'running') {
+      if (network?.status === 'stopping') {
         loadNetwork();
       }
     }, 4000);
