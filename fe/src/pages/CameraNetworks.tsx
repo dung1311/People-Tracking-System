@@ -4,7 +4,7 @@ import { Card } from '../components/Common/Card';
 import { Button } from '../components/Common/Button';
 import { CameraNetworkService } from '../api/services';
 import type { CameraNetwork } from '../types';
-import { Eye, Trash2, Plus, Calendar, Film, RefreshCw, X } from 'lucide-react';
+import { Eye, Trash2, Plus, Calendar, Film, RefreshCw, X, Settings } from 'lucide-react';
 
 export function CameraNetworks() {
   const [networks, setNetworks] = useState<CameraNetwork[]>([]);
@@ -178,6 +178,19 @@ export function CameraNetworks() {
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                 <Button 
+                  onClick={(e) => { e.stopPropagation(); navigate(`/camera_networks/${session.id}?edit=true`); }}
+                  style={{
+                    padding: '8px',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                    border: '1px solid var(--accent-primary)',
+                    color: '#ffffff'
+                  }}
+                  title="Cấu hình cameras"
+                >
+                  <Settings size={18} style={{ strokeWidth: 2.5 }} />
+                </Button>
+                <Button 
                   onClick={(e) => { e.stopPropagation(); navigate(`/camera_networks/${session.id}`); }}
                   style={{
                     padding: '8px',
@@ -186,6 +199,7 @@ export function CameraNetworks() {
                     border: '1px solid var(--border-color)',
                     color: 'white'
                   }}
+                  title="Xem chi tiết"
                 >
                   <Eye size={18} />
                 </Button>
@@ -199,6 +213,7 @@ export function CameraNetworks() {
                       border: '1px solid var(--error)',
                       color: 'var(--error)'
                     }}
+                    title="Xóa phiên"
                   >
                     <Trash2 size={18} />
                   </Button>

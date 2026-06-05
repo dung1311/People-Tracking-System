@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card } from '../components/Common/Card';
 import { Button } from '../components/Common/Button';
 import { Input } from '../components/Common/Input';
@@ -17,6 +18,7 @@ export function Cameras() {
   const [networks, setNetworks] = useState<CameraNetwork[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchParams] = useSearchParams();
   
   // ROI states
   const [rois, setRois] = useState<RoiConfig[]>([]);
@@ -68,6 +70,12 @@ export function Cameras() {
           }
         }
         setThumbnailUrls(thumbs);
+
+        const idParam = searchParams.get('id');
+        if (idParam) {
+          const cam = data.find(c => c.id === Number(idParam));
+          if (cam) setSelectedCamera(cam);
+        }
       }
     } catch (e) {
       console.error(e);

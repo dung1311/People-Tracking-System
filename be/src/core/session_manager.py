@@ -396,7 +396,8 @@ class SessionManager:
                 SimpleNamespace(
                     id=cam.id,
                     calibration_path=cam.calibration_path,
-                    source=cam.source
+                    source=cam.source,
+                    rois=cam.rois
                 )
                 for cam in cameras_db
             ]
@@ -448,7 +449,8 @@ class SessionManager:
             
             cameras_cfg[str(cam.id)] = {
                 "video": local_video_path,
-                "calibration": local_calib_path
+                "calibration": local_calib_path,
+                "rois": getattr(cam, "rois", [])
             }
 
         # Ensure MATCHING config has correct structure for MCTPipeline2 (homography & visual weights)

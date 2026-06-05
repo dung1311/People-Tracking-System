@@ -4,7 +4,13 @@ import { Card } from '../components/Common/Card';
 import { Button } from '../components/Common/Button';
 import { CameraNetworkService, CameraService } from '../api/services';
 import type { CameraNetwork, Camera } from '../types';
-import { Play, Square, Video, Cpu, Award, Zap, Clock, ArrowLeft, Download, RefreshCw, Trash2, Plus, Upload, X, Loader2 } from 'lucide-react';
+import { Play, Square, Video, Cpu, Award, Zap, Clock, ArrowLeft, Download, RefreshCw, Trash2, Plus, Upload, X, Loader2, Settings } from 'lucide-react';
+
+interface RoiConfig {
+  id: string;
+  name: string;
+  polygon: number[][];
+}
 
 export function CameraNetworkDetail() {
   const { id } = useParams<{ id: string }>();
@@ -26,8 +32,18 @@ export function CameraNetworkDetail() {
   const [camLocation, setCamLocation] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [calibFile, setCalibFile] = useState<File | null>(null);
-  const [uploadStep, setUploadStep] = useState<'idle' | 'creating' | 'uploading_video' | 'uploading_calib' | 'finishing'>('idle');
+  const [uploadStep, setUploadStep] = useState<'idle' | 'creating' | 'uploading_video' | 'uploading_calib' | 'finishing' | 'roi_drawing'>('idle');
   const [uploadProgressText, setUploadProgressText] = useState('');
+
+  // ROI drawing states
+  const [createdCamId, setCreatedCamId] = useState<number | null>(null);
+  const [editingCamId, setEditingCamId] = useState<number | null>(null);
+  const [frameUrl, setFrameUrl] = useState<string>('');
+  const [rois, setRois] = useState<RoiConfig[]>([]);
+  const [currentPoints, setCurrentPoints] = useState<number[][]>([]);
+  const [newRoiName, setNewRoiName] = useState('');
+  const [isDrawing, setIsDrawing] = useState(false);
+  const imageRef = useRef<HTMLImageElement>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const userRole = localStorage.getItem('user_role');
@@ -82,6 +98,13 @@ export function CameraNetworkDetail() {
     }, 4000);
     return () => clearInterval(interval);
   }, [networkId, network?.status]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('edit') === 'true' && network && network.status === 'created') {
+      setShowAddCamModal(true);
+    }
+  }, [network]);
 
   // WebSocket Connection Handler for live streaming
   useEffect(() => {
@@ -183,70 +206,220 @@ export function CameraNetworkDetail() {
     }
   };
 
+  const handleEditCamera = async (cam: Camera) => {
+    setEditingCamId(cam.id || null);
+    setCamName(cam.name || '');
+    setCamLocation(cam.location || '');
+    setVideoFile(null);
+    setCalibFile(null);
+    setCreatedCamId(cam.id || null);
+    setRois([]);
+    setCurrentPoints([]);
+    setUploadStep('idle');
+    setShowAddCamModal(true);
+
+    if (cam.id) {
+      try {
+        const { apiClient } = await import('../api/client');
+        const response = await apiClient.get(`/cameras/${cam.id}/frame`, { responseType: 'blob' });
+        const url = URL.createObjectURL(response.data);
+        setFrameUrl(url);
+      } catch (err) {
+        console.error('Error loading camera frame:', err);
+      }
+
+      try {
+        const { CameraRoiService } = await import('../api/services');
+        const currentRois = await CameraRoiService.getRois(cam.id);
+        setRois(currentRois);
+      } catch (err) {
+        console.error('Error loading camera ROIs:', err);
+      }
+    }
+  };
+
   const handleSaveCamera = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!camName.trim()) {
       setError('Vui lòng nhập tên camera.');
       return;
     }
-    if (!videoFile) {
+    if (!videoFile && !editingCamId) {
       setError('Vui lòng chọn file video nguồn.');
       return;
     }
 
     setError(null);
     setUploadStep('creating');
-    setUploadProgressText('Đang tạo thực thể camera trên hệ thống...');
+    setUploadProgressText(editingCamId ? 'Đang cập nhật thông tin camera...' : 'Đang tạo thực thể camera trên hệ thống...');
 
     try {
-      // 1. Create camera in DB associated to this network
-      const newCam = await CameraService.create({
-        name: camName.trim(),
-        network_id: networkId,
-        source: `videos/${videoFile.name}`,
-        source_type: 'video',
-        location: camLocation.trim() || undefined,
-        is_active: false
-      });
+      let activeCamId = editingCamId;
+      if (editingCamId) {
+        // Update camera details
+        await CameraService.update(editingCamId, {
+          name: camName.trim(),
+          location: camLocation.trim() || null,
+          ...(videoFile ? { source: `videos/${videoFile.name}` } : {})
+        });
+      } else {
+        // 1. Create camera in DB associated to this network
+        const newCam = await CameraService.create({
+          name: camName.trim(),
+          network_id: networkId,
+          source: `videos/${videoFile!.name}`,
+          source_type: 'video',
+          location: camLocation.trim() || undefined,
+          is_active: false
+        });
 
-      if (!newCam.id) {
-        throw new Error('Không nhận được ID camera từ máy chủ');
+        if (!newCam.id) {
+          throw new Error('Không nhận được ID camera từ máy chủ');
+        }
+        activeCamId = newCam.id;
+        setCreatedCamId(newCam.id);
       }
 
-      // 2. Upload video file
-      setUploadStep('uploading_video');
-      setUploadProgressText('Đang tải lên file video và tự động trích xuất metadata (có thể mất vài giây)...');
-      await CameraService.uploadVideo(newCam.id, videoFile);
+      if (!activeCamId) {
+        throw new Error('ID camera không hợp lệ');
+      }
+
+      // 2. Upload video file if provided
+      if (videoFile) {
+        setUploadStep('uploading_video');
+        setUploadProgressText('Đang tải lên file video và tự động trích xuất metadata (có thể mất vài giây)...');
+        await CameraService.uploadVideo(activeCamId, videoFile!);
+      }
 
       // 3. Upload calibration matrix if present
       if (calibFile) {
         setUploadStep('uploading_calib');
         setUploadProgressText('Đang tải lên và cấu hình ma trận hiệu chuẩn camera...');
-        await CameraService.uploadCalibration(newCam.id, calibFile);
+        await CameraService.uploadCalibration(activeCamId, calibFile);
       }
 
-      // 4. Finish upload
+      // 4. Prepare for ROI drawing
       setUploadStep('finishing');
-      setUploadProgressText('Hoàn tất! Camera đã được tích hợp thành công vào phiên bám vết.');
+      setUploadProgressText('Đang tải khung hình mẫu để vẽ vùng giám sát (ROI)...');
       
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      try {
+        const { apiClient } = await import('../api/client');
+        const response = await apiClient.get(`/cameras/${activeCamId}/frame`, { responseType: 'blob' });
+        const url = URL.createObjectURL(response.data);
+        setFrameUrl(url);
+      } catch (err) {
+        console.error('Error loading camera frame:', err);
+      }
 
-      // Reset states
-      setCamName('');
-      setCamLocation('');
-      setVideoFile(null);
-      setCalibFile(null);
-      setShowAddCamModal(false);
-      
-      // Reload network details
-      await loadNetwork();
+      setUploadStep('roi_drawing');
+      setUploadProgressText('');
+
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.detail || err.message || 'Lỗi trong quá trình khởi tạo camera. Vui lòng kiểm tra lại file.');
-    } finally {
       setUploadStep('idle');
       setUploadProgressText('');
     }
+  };
+
+  const finishAddCamera = async () => {
+    // Reset states
+    setCamName('');
+    setCamLocation('');
+    setVideoFile(null);
+    setCalibFile(null);
+    setCreatedCamId(null);
+    setEditingCamId(null);
+    setFrameUrl('');
+    setRois([]);
+    setCurrentPoints([]);
+    setUploadStep('idle');
+    setShowAddCamModal(false);
+    
+    // Reload network details
+    await loadNetwork();
+  };
+
+  const getCameraResolution = () => {
+    if (imageRef.current && imageRef.current.naturalWidth && imageRef.current.naturalHeight) {
+      return { width: imageRef.current.naturalWidth, height: imageRef.current.naturalHeight };
+    }
+    // Fallback to active camera's resolution if found
+    const activeCam = network?.cameras?.find(c => c.id === (createdCamId || editingCamId));
+    if (activeCam && activeCam.resolution) {
+      const parts = activeCam.resolution.split('x').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        return { width: parts[0], height: parts[1] };
+      }
+    }
+    return { width: 1920, height: 1080 };
+  };
+
+  const startDrawingWorkflow = () => {
+    const name = prompt("Nhập tên khu vực ROI (ví dụ: Cửa chính, Khu vực A):");
+    if (name === null) return; // Cancelled
+    setNewRoiName(name.trim() || `Khu vực ${rois.length + 1}`);
+    setIsDrawing(true);
+    setCurrentPoints([]);
+  };
+
+  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!isDrawing) return;
+    if (!imageRef.current) return;
+    const rect = imageRef.current.getBoundingClientRect();
+    const nx = (e.clientX - rect.left) / rect.width;
+    const ny = (e.clientY - rect.top) / rect.height;
+    setCurrentPoints([...currentPoints, [nx, ny]]);
+  };
+
+  const handleAddRoi = () => {
+    if (currentPoints.length < 3) {
+      alert('Vui lòng vẽ ít nhất 3 điểm để tạo một đa giác (Polygon).');
+      return;
+    }
+    const { width, height } = getCameraResolution();
+    const pixelPolygon = currentPoints.map(([nx, ny]) => [
+      Math.round(nx * width),
+      Math.round(ny * height)
+    ]);
+    const newRoi: RoiConfig = {
+      id: `roi_${Date.now()}`,
+      name: newRoiName.trim() || `Khu vực ${rois.length + 1}`,
+      polygon: pixelPolygon
+    };
+    setRois([...rois, newRoi]);
+    setCurrentPoints([]);
+    setNewRoiName('');
+    setIsDrawing(false);
+  };
+
+  const handleDeleteRoi = (id: string) => {
+    setRois(rois.filter(r => r.id !== id));
+  };
+
+  const handleSaveRois = async () => {
+    const activeCamId = createdCamId || editingCamId;
+    if (activeCamId) {
+      try {
+        const { CameraRoiService } = await import('../api/services');
+        await CameraRoiService.saveRois(activeCamId, rois);
+      } catch (err) {
+        console.error(err);
+        alert('Không thể lưu cấu hình ROI.');
+        return;
+      }
+    }
+    await finishAddCamera();
+  };
+
+  const renderPolygonPoints = (pts: number[][]) => {
+    const { width, height } = getCameraResolution();
+    return pts.map(([nx, ny]) => `${nx * width},${ny * height}`).join(' ');
+  };
+
+  const getPixelPoints = (pixelPoly: number[][]) => {
+    if (!pixelPoly) return '';
+    return pixelPoly.map(([px, py]) => `${px},${py}`).join(' ');
   };
 
   const handleDeleteCamera = async (camId: number) => {
@@ -263,6 +436,26 @@ export function CameraNetworkDetail() {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const getGridAspectRatio = () => {
+    const sortedCamIds = (network?.cameras || []).map(c => c.id!).sort((a, b) => a - b);
+    const numCams = sortedCamIds.length;
+    if (numCams === 0) return '16/9';
+    const numCols = numCams === 1 ? 1 : 2;
+    const numRows = Math.ceil(numCams / numCols);
+    
+    let camWidth = 1920;
+    let camHeight = 1080;
+    const firstCam = network?.cameras?.[0];
+    if (firstCam && firstCam.resolution) {
+      const parts = firstCam.resolution.split('x').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        camWidth = parts[0];
+        camHeight = parts[1];
+      }
+    }
+    return `${numCols * camWidth} / ${numRows * camHeight}`;
   };
 
   if (!network) {
@@ -306,6 +499,20 @@ export function CameraNetworkDetail() {
 
         {canEdit && (
           <div style={{ display: 'flex', gap: '10px' }}>
+            <Button 
+              onClick={loadNetwork} 
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                backgroundColor: 'var(--bg-secondary)',
+                border: '1px solid var(--border-color)',
+                color: 'white'
+              }}
+            >
+              <RefreshCw size={16} />
+              Làm mới
+            </Button>
             {network.status !== 'running' && network.status !== 'stopping' ? (
               <Button 
                 onClick={handleStart} 
@@ -354,7 +561,7 @@ export function CameraNetworkDetail() {
         {/* Left pane: Live view or Player */}
         <Card style={{ padding: network.status === 'created' ? 'var(--spacing-lg)' : '0', overflow: 'hidden', display: 'flex', flexDirection: 'column', backgroundColor: '#0c0e12', border: '1px solid var(--border-color)', borderRadius: '12px' }}>
           {network.status === 'running' ? (
-            <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+            <div style={{ position: 'relative', width: '100%', aspectRatio: getGridAspectRatio(), display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
               {liveFrame ? (
                 <img 
                   src={liveFrame} 
@@ -389,7 +596,7 @@ export function CameraNetworkDetail() {
               </div>
             </div>
           ) : network.status === 'completed' ? (
-            <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', backgroundColor: '#000' }}>
+            <div style={{ position: 'relative', width: '100%', aspectRatio: getGridAspectRatio(), backgroundColor: '#000' }}>
               {outputVideoUrl ? (
                 <video 
                   src={outputVideoUrl}
@@ -447,33 +654,60 @@ export function CameraNetworkDetail() {
                         </div>
                       )}
 
-                      {/* Top Right delete button */}
+                      {/* Top Right action buttons */}
                       {canEdit && (
-                        <button
-                          onClick={() => handleDeleteCamera(cam.id!)}
-                          style={{
-                            position: 'absolute',
-                            top: '8px',
-                            right: '8px',
-                            backgroundColor: 'rgba(239, 68, 68, 0.9)',
-                            border: 'none',
-                            borderRadius: '6px',
-                            width: '28px',
-                            height: '28px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white',
-                            cursor: 'pointer',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                            transition: 'background-color 0.2s'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--error)'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.9)'}
-                          title="Xóa camera"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <div style={{
+                          position: 'absolute',
+                          top: '8px',
+                          right: '8px',
+                          display: 'flex',
+                          gap: '6px'
+                        }}>
+                          <button
+                            onClick={() => handleEditCamera(cam)}
+                            style={{
+                              backgroundColor: 'rgba(99, 102, 241, 0.9)',
+                              border: 'none',
+                              borderRadius: '6px',
+                              width: '28px',
+                              height: '28px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'white',
+                              cursor: 'pointer',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                              transition: 'background-color 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--accent-primary)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.9)'}
+                            title="Cài đặt & Hiệu chuẩn camera"
+                          >
+                            <Settings size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCamera(cam.id!)}
+                            style={{
+                              backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                              border: 'none',
+                              borderRadius: '6px',
+                              width: '28px',
+                              height: '28px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'white',
+                              cursor: 'pointer',
+                              boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+                              transition: 'background-color 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--error)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.9)'}
+                            title="Xóa camera"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -665,14 +899,34 @@ export function CameraNetworkDetail() {
               <h3 style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
                 Tải xuống kết quả
               </h3>
-              <a 
-                href={outputVideoUrl} 
-                download={`session_${networkId}_output.mp4`}
-                target="_blank" 
-                rel="noreferrer"
-                style={{ width: '100%' }}
-              >
-                <Button style={{
+              <Button 
+                onClick={async (e) => {
+                  e.preventDefault();
+                  try {
+                    // Try fetching as blob to force download without opening a new tab
+                    const response = await fetch(outputVideoUrl);
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = `session_${networkId}_output.mp4`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    a.remove();
+                  } catch (err) {
+                    console.error("Fetch download failed, falling back", err);
+                    // Fallback to normal anchor click
+                    const a = document.createElement('a');
+                    a.href = outputVideoUrl;
+                    a.download = `session_${networkId}_output.mp4`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                  }
+                }}
+                style={{
                   width: '100%',
                   display: 'flex',
                   alignItems: 'center',
@@ -681,10 +935,9 @@ export function CameraNetworkDetail() {
                   backgroundColor: 'var(--accent-primary)',
                   border: 'none'
                 }}>
-                  <Download size={18} />
-                  Tải Video Annotated kết quả (.mp4)
-                </Button>
-              </a>
+                <Download size={18} />
+                Tải Video Annotated kết quả (.mp4)
+              </Button>
             </Card>
           )}
         </div>
@@ -713,13 +966,7 @@ export function CameraNetworkDetail() {
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)'
           }}>
             <button 
-              onClick={() => {
-                setShowAddCamModal(false);
-                setCamName('');
-                setCamLocation('');
-                setVideoFile(null);
-                setCalibFile(null);
-              }}
+              onClick={finishAddCamera}
               style={{
                 position: 'absolute',
                 top: '16px',
@@ -733,12 +980,14 @@ export function CameraNetworkDetail() {
               <X size={20} />
             </button>
 
-            <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Plus size={20} color="var(--accent-primary)" />
-              Thêm Camera mới vào Mạng lưới
-            </h3>
+            {uploadStep !== 'roi_drawing' ? (
+              <>
+                <h3 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Plus size={20} color="var(--accent-primary)" />
+                  {editingCamId ? 'Cấu hình & Chỉnh sửa Camera' : 'Thêm Camera mới vào Mạng lưới'}
+                </h3>
 
-            <form onSubmit={handleSaveCamera} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <form onSubmit={handleSaveCamera} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Tên Camera *</label>
                 <input
@@ -779,7 +1028,9 @@ export function CameraNetworkDetail() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>Video nguồn (.mp4) *</label>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                  Video nguồn (.mp4) {editingCamId ? '(Không bắt buộc - chọn để thay thế)' : '*'}
+                </label>
                 <div style={{
                   border: '1px dashed var(--border-color)',
                   borderRadius: '6px',
@@ -842,42 +1093,130 @@ export function CameraNetworkDetail() {
               <div style={{ display: 'flex', gap: '12px', marginTop: '1rem' }}>
                 <Button 
                   type="submit" 
+                  disabled={uploadStep !== 'idle'}
                   style={{
-                    flex: 1,
-                    height: '42px',
+                    flex: 1, height: '44px',
                     background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary))',
-                    border: 'none'
+                    border: 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
                   }}
                 >
-                  Khởi tạo & Upload
+                  {uploadStep !== 'idle' ? (
+                    <>
+                      <RefreshCw size={16} className="animate-spin" />
+                      {uploadProgressText}
+                    </>
+                  ) : 'Upload và Thiết lập Camera'}
                 </Button>
                 <Button 
                   type="button"
-                  onClick={() => {
-                    setShowAddCamModal(false);
-                    setCamName('');
-                    setCamLocation('');
-                    setVideoFile(null);
-                    setCalibFile(null);
-                  }}
-                  style={{
-                    flex: 1,
-                    height: '42px',
-                    backgroundColor: 'var(--bg-tertiary)',
-                    border: '1px solid var(--border-color)',
-                    color: 'white'
-                  }}
+                  onClick={finishAddCamera}
+                  style={{ flex: 1, height: '44px', backgroundColor: 'var(--bg-tertiary)', border: '1px solid var(--border-color)', color: 'white' }}
                 >
                   Hủy
                 </Button>
               </div>
             </form>
+            </>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <h3 style={{ fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Plus size={20} color="var(--accent-primary)" />
+                  Bước 2: Cấu hình khu vực giám sát (ROI)
+                </h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  Vẽ đa giác để xác định khu vực giám sát. Bạn có thể bỏ qua nếu camera này không cần ROI.
+                </p>
+
+                <div style={{ position: 'relative', width: '100%', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', marginBottom: '4px' }}>
+                  <img
+                    ref={imageRef}
+                    src={frameUrl}
+                    alt="Camera Frame"
+                    style={{ width: '100%', display: 'block', minHeight: '240px', backgroundColor: 'var(--bg-tertiary)' }}
+                    onError={(e) => {
+                      e.currentTarget.src = "https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=1200";
+                    }}
+                  />
+                  <svg
+                    onClick={handleSvgClick}
+                    viewBox={`0 0 ${getCameraResolution().width} ${getCameraResolution().height}`}
+                    preserveAspectRatio="none"
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', cursor: isDrawing ? 'crosshair' : 'default' }}
+                  >
+                    {rois.map((roi) => (
+                      <polygon
+                        key={roi.id} points={getPixelPoints(roi.polygon)}
+                        fill="rgba(99, 102, 241, 0.15)" stroke="var(--accent-primary)" strokeWidth="4"
+                      />
+                    ))}
+                    {currentPoints.length > 0 && (
+                      <>
+                        <polygon points={renderPolygonPoints(currentPoints)} fill="rgba(245, 158, 11, 0.15)" stroke="#f59e0b" strokeWidth="4" />
+                        {currentPoints.map(([x, y], idx) => (
+                          <circle key={idx} cx={x * getCameraResolution().width} cy={y * getCameraResolution().height} r="10" fill="#f59e0b" stroke="white" strokeWidth="2" />
+                        ))}
+                      </>
+                    )}
+                  </svg>
+                </div>
+
+                {!isDrawing ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <Button onClick={startDrawingWorkflow} variant="secondary" style={{ width: '100%', height: '40px', fontWeight: 600 }}>
+                      + Thêm ROI mới
+                    </Button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--accent-secondary)', margin: 0, fontWeight: 500 }}>
+                      Đang vẽ vùng: <strong style={{ color: 'white' }}>"{newRoiName}"</strong>. Nhấp chuột lên hình ảnh để chọn các điểm đỉnh cho đa giác (cần tối thiểu 3 điểm).
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <Button onClick={handleAddRoi} variant="primary" style={{ flex: 1, height: '36px', fontSize: '0.85rem' }}>
+                        Hoàn tất vẽ
+                      </Button>
+                      {currentPoints.length > 0 && (
+                        <Button onClick={() => setCurrentPoints([])} variant="secondary" style={{ height: '36px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                          Vẽ lại
+                        </Button>
+                      )}
+                      <Button onClick={() => { setIsDrawing(false); setCurrentPoints([]); }} variant="secondary" style={{ height: '36px', fontSize: '0.85rem', color: 'var(--error)' }}>
+                        Hủy
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {rois.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '120px', overflowY: 'auto' }}>
+                    {rois.map((roi) => (
+                      <div key={roi.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', backgroundColor: 'var(--bg-tertiary)', borderRadius: '6px' }}>
+                        <span style={{ fontSize: '0.85rem', color: 'white' }}>{roi.name}</span>
+                        <button onClick={() => handleDeleteRoi(roi.id)} style={{ background: 'transparent', border: 'none', color: 'var(--error)', cursor: 'pointer' }}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '12px', marginTop: '1rem' }}>
+                  <Button onClick={handleSaveRois} style={{ flex: 1, background: 'linear-gradient(90deg, var(--accent-primary), var(--accent-secondary))' }}>
+                    Lưu cấu hình & Hoàn tất
+                  </Button>
+                  <Button onClick={finishAddCamera} style={{ flex: 1, backgroundColor: 'var(--bg-tertiary)' }}>
+                    Bỏ qua & Hoàn tất
+                  </Button>
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       )}
 
       {/* Uploading loading overlay */}
-      {uploadStep !== 'idle' && (
+      {uploadStep !== 'idle' && uploadStep !== 'roi_drawing' && (
         <div style={{
           position: 'fixed',
           top: 0, left: 0, right: 0, bottom: 0,

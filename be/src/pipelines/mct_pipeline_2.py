@@ -50,11 +50,13 @@ class MCTPipeline2:
         cameras = mct_cfg["CAMERAS"]
         self.H_invs: Dict[int, np.ndarray] = {}
         self.workers: Dict[int, CameraWorker] = {}
+        self.camera_rois: Dict[int, list] = {}
         for cam_id_str, cam_cfg in cameras.items():
             cid = int(cam_id_str)
             cal = CameraCalibration.load_from_json(cam_cfg["calibration"], cid)
             self.H_invs[cid] = cal.H_inv
             self.workers[cid] = CameraWorker(cid, cam_cfg["video"], sct_config)
+            self.camera_rois[cid] = cam_cfg.get("rois") or []
 
         self.cam_ids_sorted = sorted(self.H_invs)
         self.cam_names = [f"Cam {c}" for c in self.cam_ids_sorted]
@@ -249,6 +251,25 @@ class MCTPipeline2:
             if cid not in frames:
                 continue
             frame = frames[cid].copy()
+            
+            # Draw ROIs configured for this camera
+            rois = getattr(self, "camera_rois", {}).get(cid, [])
+            for roi in rois:
+                polygon = roi.get("polygon", [])
+                if len(polygon) >= 3:
+                    pts = np.array(polygon, dtype=np.int32)
+                    pts = pts.reshape((-1, 1, 2))
+                    overlay = frame.copy()
+                    cv2.fillPoly(overlay, [pts], (241, 102, 99))
+                    cv2.addWeighted(overlay, 0.08, frame, 0.92, 0, frame)
+                    cv2.polylines(frame, [pts], True, (241, 102, 99), 2)
+                    name = roi.get("name", "")
+                    if name:
+                        x, y = int(polygon[0][0]), int(polygon[0][1])
+                        (tw, th), _ = cv2.getTextSize(name, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                        cv2.rectangle(frame, (x, y - th - 6), (x + tw + 4, y), (241, 102, 99), -1)
+                        cv2.putText(frame, name, (x + 2, y - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+            
             for t in per_cam.get(cid, []):
                 if t.person_id is None:
                     continue

@@ -1,39 +1,21 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { CameraService, CameraRoiService } from '../api/services';
-import { Plus, Save, Trash2, Video, Users, Clock, Maximize } from 'lucide-react';
-
-interface RoiConfig {
-  id: string;
-  name: string;
-  polygon: number[][]; // [[x1, y1], [x2, y2], ...] in pixel space
-}
+import { Video, Users, Clock, Maximize } from 'lucide-react';
 
 export function RoiAnalysis() {
   const [cameras, setCameras] = useState<any[]>([]);
-  const [selectedCameraId, setSelectedCameraId] = useState<number | null>(null);
-  const [rois, setRois] = useState<RoiConfig[]>([]);
-  const [frameUrl, setFrameUrl] = useState<string>('');
-  
-  // Drawing state
-  const [currentPoints, setCurrentPoints] = useState<number[][]>([]); // normalized coordinates [[nx, ny], ...]
-  const [newRoiName, setNewRoiName] = useState('');
   
   // Segments and Analysis state
   const [segments, setSegments] = useState<any[]>([]);
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
   const [analysisResults, setAnalysisResults] = useState<any>(null);
   const [analyzing, setAnalyzing] = useState(false);
-  
-  const imageRef = useRef<HTMLImageElement>(null);
 
   // Fetch initial data
   const loadInitialData = async () => {
     try {
       const cams = await CameraService.getAll();
       setCameras(cams);
-      if (cams.length > 0 && cams[0].id !== undefined) {
-        setSelectedCameraId(cams[0].id);
-      }
       
       const segs = await CameraRoiService.getAllSegments();
       setSegments(segs);
@@ -45,97 +27,6 @@ export function RoiAnalysis() {
   useEffect(() => {
     loadInitialData();
   }, []);
-
-  // Fetch ROIs and frame when camera changes
-  useEffect(() => {
-    if (selectedCameraId !== null) {
-      CameraRoiService.getRois(selectedCameraId)
-        .then(setRois)
-        .catch(err => console.error('Error getting ROIs:', err));
-      setCurrentPoints([]);
-
-      // Load frame via authenticated client
-      const loadFrame = async () => {
-        try {
-          const { apiClient } = await import('../api/client');
-          const response = await apiClient.get(`/cameras/${selectedCameraId}/frame`, { responseType: 'blob' });
-          const url = URL.createObjectURL(response.data);
-          setFrameUrl(url);
-        } catch (err) {
-          console.error('Error loading camera frame:', err);
-          setFrameUrl(''); // fallback to error image
-        }
-      };
-      loadFrame();
-    }
-  }, [selectedCameraId]);
-
-  const getSelectedCamera = () => {
-    return cameras.find(c => c.id === selectedCameraId);
-  };
-
-  // Convert SVG click to normalized point (0.0 to 1.0)
-  const handleSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!imageRef.current) return;
-    
-    const rect = imageRef.current.getBoundingClientRect();
-    const nx = (e.clientX - rect.left) / rect.width;
-    const ny = (e.clientY - rect.top) / rect.height;
-    
-    setCurrentPoints([...currentPoints, [nx, ny]]);
-  };
-
-  const handleAddRoi = () => {
-    if (currentPoints.length < 3) {
-      alert('Vui lòng vẽ ít nhất 3 điểm để tạo một đa giác (Polygon).');
-      return;
-    }
-    
-    const camera = getSelectedCamera();
-    if (!camera) return;
-    
-    // Parse resolution safely to convert normalized to pixel space
-    let width = 1920;
-    let height = 1080;
-    if (camera && camera.resolution) {
-      const parts = camera.resolution.split('x').map(Number);
-      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1]) && parts[0] > 0 && parts[1] > 0) {
-        width = parts[0];
-        height = parts[1];
-      }
-    }
-    
-    const pixelPolygon = currentPoints.map(([nx, ny]) => [
-      Math.round(nx * width),
-      Math.round(ny * height)
-    ]);
-    
-    const newRoi: RoiConfig = {
-      id: `roi_${Date.now()}`,
-      name: newRoiName.trim() || `Khu vực ${rois.length + 1}`,
-      polygon: pixelPolygon
-    };
-    
-    const updated = [...rois, newRoi];
-    setRois(updated);
-    setCurrentPoints([]);
-    setNewRoiName('');
-  };
-
-  const handleSaveRois = async () => {
-    if (selectedCameraId === null) return;
-    try {
-      await CameraRoiService.saveRois(selectedCameraId, rois);
-      alert('Đã lưu cấu hình các khu vực ROI thành công!');
-    } catch (err) {
-      console.error(err);
-      alert('Không thể lưu cấu hình ROI.');
-    }
-  };
-
-  const handleDeleteRoi = (id: string) => {
-    setRois(rois.filter(r => r.id !== id));
-  };
 
   const handleAnalyze = async () => {
     if (selectedSegmentId === null) {
@@ -156,232 +47,16 @@ export function RoiAnalysis() {
     }
   };
 
-  // Render polygon points on SVG
-  const renderPolygonPoints = (pts: number[][]) => {
-    return pts.map(([nx, ny]) => `${nx * 100}%,${ny * 100}%`).join(' ');
-  };
-
-  // Convert pixel-space polygon to percentage-space for frontend rendering
-  const getPercentagePoints = (pixelPoly: number[][]) => {
-    if (!pixelPoly) return '';
-    const camera = getSelectedCamera();
-    let width = 1920;
-    let height = 1080;
-    if (camera && camera.resolution) {
-      const parts = camera.resolution.split('x').map(Number);
-      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1]) && parts[0] > 0 && parts[1] > 0) {
-        width = parts[0];
-        height = parts[1];
-      }
-    }
-    
-    return pixelPoly.map(([px, py]) => `${(px / width) * 100}%, ${(py / height) * 100}%`).join(' ');
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
       {/* Title */}
       <div>
-        <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'white', margin: 0 }}>Cấu hình & Phân tích ROI</h2>
+        <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'white', margin: 0 }}>Phân tích ROI</h2>
         <p style={{ color: 'var(--text-secondary)', margin: '8px 0 0 0' }}>
-          Vẽ đa giác để xác định khu vực giám sát (ROI) và thống kê mật độ người, thời gian tập trung sau khi chạy xong pipeline.
+          Xem khu vực giám sát (ROI) và thống kê mật độ người, thời gian tập trung sau khi chạy xong pipeline.
         </p>
       </div>
 
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '3fr 1.5fr',
-        gap: '32px',
-        alignItems: 'start'
-      }}>
-        {/* Left column: Drawing canvas */}
-        <div style={{
-          backgroundColor: 'var(--bg-secondary)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '16px',
-          padding: '24px',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'white', margin: 0 }}>Vẽ khu vực trên Camera</h3>
-            <select
-              value={selectedCameraId || ''}
-              onChange={(e) => setSelectedCameraId(Number(e.target.value))}
-              style={{
-                backgroundColor: 'var(--bg-tertiary)',
-                color: 'white',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                padding: '6px 12px',
-                fontSize: '0.85rem'
-              }}
-            >
-              {cameras.map(c => (
-                <option key={c.id} value={c.id}>{c.name} ({c.resolution || 'Đang cập nhật...'})</option>
-              ))}
-            </select>
-          </div>
-
-          {selectedCameraId ? (
-            <div style={{ position: 'relative', width: '100%', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-              <img
-                ref={imageRef}
-                src={frameUrl}
-                alt="Camera Frame"
-                style={{ width: '100%', display: 'block', minHeight: '360px', backgroundColor: 'var(--bg-tertiary)' }}
-                onError={(e) => {
-                  // Fallback if no frame endpoint works yet
-                  e.currentTarget.src = "https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=1200";
-                }}
-              />
-              
-              <svg
-                onClick={handleSvgClick}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  cursor: 'crosshair'
-                }}
-              >
-                {/* Render saved ROIs */}
-                {rois.map((roi) => (
-                  <polygon
-                    key={roi.id}
-                    points={getPercentagePoints(roi.polygon)}
-                    fill="rgba(99, 102, 241, 0.15)"
-                    stroke="var(--accent-primary)"
-                    strokeWidth="2"
-                  />
-                ))}
-
-                {/* Render currently drawing polygon */}
-                {currentPoints.length > 0 && (
-                  <>
-                    <polygon
-                      points={renderPolygonPoints(currentPoints)}
-                      fill="rgba(245, 158, 11, 0.15)"
-                      stroke="#f59e0b"
-                      strokeWidth="2"
-                    />
-                    {currentPoints.map(([x, y], idx) => (
-                      <circle
-                        key={idx}
-                        cx={`${x * 100}%`}
-                        cy={`${y * 100}%`}
-                        r="5"
-                        fill="#f59e0b"
-                        stroke="white"
-                        strokeWidth="1"
-                      />
-                    ))}
-                  </>
-                )}
-              </svg>
-            </div>
-          ) : (
-            <div style={{ height: '360px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
-              Vui lòng tạo camera trước.
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-            <input
-              type="text"
-              placeholder="Tên khu vực (ví dụ: Cổng chính)"
-              value={newRoiName}
-              onChange={(e) => setNewRoiName(e.target.value)}
-              style={{
-                flex: 1,
-                backgroundColor: 'var(--bg-tertiary)',
-                color: 'white',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                padding: '8px 12px',
-                fontSize: '0.9rem'
-              }}
-            />
-            <button
-              onClick={handleAddRoi}
-              className="btn btn-secondary"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-            >
-              <Plus size={16} />
-              Thêm Khu Vực
-            </button>
-            {currentPoints.length > 0 && (
-              <button
-                onClick={() => setCurrentPoints([])}
-                className="btn btn-secondary"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                Vẽ lại
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Right column: ROI management panel */}
-        <div style={{
-          backgroundColor: 'var(--bg-secondary)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '16px',
-          padding: '24px',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '24px'
-        }}>
-          <div>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'white', margin: '0 0 12px 0' }}>Khu vực đã tạo</h3>
-            
-            {rois.length === 0 ? (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0 }}>
-                Chưa cấu hình ROI nào. Nhấp vào ảnh để vẽ đa giác.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
-                {rois.map((roi) => (
-                  <div key={roi.id} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '8px 12px',
-                    backgroundColor: 'var(--bg-tertiary)',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-color)'
-                  }}>
-                    <span style={{ fontSize: '0.9rem', color: 'white', fontWeight: 500 }}>{roi.name}</span>
-                    <button
-                      onClick={() => handleDeleteRoi(roi.id)}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--error)',
-                        cursor: 'pointer',
-                        padding: '4px'
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={handleSaveRois}
-            className="btn btn-primary"
-            style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-          >
-            <Save size={16} />
-            Lưu Cấu Hình ROI
-          </button>
-        </div>
-      </div>
 
       {/* Analysis Section */}
       <div style={{
