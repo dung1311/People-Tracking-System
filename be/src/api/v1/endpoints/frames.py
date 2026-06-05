@@ -56,9 +56,11 @@ def get_frame(
                 source = f"../{source}"
     
     if not os.path.exists(source) and not source.startswith("rtsp"):
-         # Try looking in data/videos
-         if os.path.exists(f"../data/videos/{os.path.basename(source)}"):
-             source = f"../data/videos/{os.path.basename(source)}"
+         # Try looking in parent dir since backend might run from src/
+         if os.path.exists(f"../{source}"):
+             source = f"../{source}"
+         elif os.path.exists(f"../data/{camera.source}"):
+             source = f"../data/{camera.source}"
     
     cap = cv2.VideoCapture(source)
     if not cap.isOpened():
