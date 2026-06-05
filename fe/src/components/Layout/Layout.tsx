@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Search, Menu, Film, LogOut, User as UserIcon } from 'lucide-react';
+import { Search, Menu, Film, LogOut, User as UserIcon, AreaChart } from 'lucide-react';
 import { Login } from '../../pages/Login';
 import '../../styles/components.css';
 
@@ -13,6 +13,7 @@ export function Layout({ children }: LayoutProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
   const [userRole, setUserRole] = useState('');
+  const [sysStats, setSysStats] = useState<{ cpu: number; ram: number; gpu: number | null }>({ cpu: 0, ram: 0, gpu: null });
   const navigate = useNavigate();
 
   const checkAuth = () => {
@@ -29,6 +30,27 @@ export function Layout({ children }: LayoutProps) {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    
+    const fetchSysStatus = async () => {
+      try {
+        const { SystemService } = await import('../../api/services');
+        const data = await SystemService.getStatus();
+        const cpu = Math.round(data.cpu?.usage_percent || 0);
+        const ram = Math.round(data.ram?.usage_percent || 0);
+        const gpu = data.gpu && data.gpu.length > 0 ? Math.round(data.gpu[0].utilization_percent) : null;
+        setSysStats({ cpu, ram, gpu });
+      } catch (err) {
+        console.error("Error fetching sidebar system status:", err);
+      }
+    };
+
+    fetchSysStatus();
+    const interval = setInterval(fetchSysStatus, 5000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn]);
 
   const handleLogout = () => {
     localStorage.removeItem('access_token');
@@ -91,6 +113,19 @@ export function Layout({ children }: LayoutProps) {
             </NavLink>
 
             <NavLink 
+              to="/roi_analysis" 
+              className={({ isActive }) => `btn ${isActive ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ justifyContent: 'flex-start', width: '100%', border: 'none', background: 'transparent', boxShadow: 'none' }}
+            >
+              {({ isActive }) => (
+                  <>
+                      <AreaChart size={18} color={isActive ? 'var(--accent-primary)' : 'var(--text-secondary)'} />
+                      <span style={{ color: isActive ? 'white' : 'var(--text-secondary)', fontSize: '0.95rem' }}>Phân tích ROI</span>
+                  </>
+              )}
+            </NavLink>
+
+            <NavLink 
               to="/search" 
               className={({ isActive }) => `btn ${isActive ? 'btn-primary' : 'btn-secondary'}`}
               style={{ justifyContent: 'flex-start', width: '100%', border: 'none', background: 'transparent', boxShadow: 'none' }}
@@ -102,6 +137,8 @@ export function Layout({ children }: LayoutProps) {
                   </>
               )}
             </NavLink>
+
+
           </nav>
         </div>
 
@@ -113,6 +150,40 @@ export function Layout({ children }: LayoutProps) {
           flexDirection: 'column',
           gap: '12px'
         }}>
+          {/* Resource Monitor Widget */}
+          {isLoggedIn && (
+            <div style={{
+              padding: '10px 12px',
+              backgroundColor: 'rgba(255, 255, 255, 0.02)',
+              borderRadius: '8px',
+              border: '1px solid rgba(255, 255, 255, 0.05)',
+              fontSize: '0.75rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              color: 'var(--text-secondary)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#a1a1aa', fontWeight: 600, fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                <span>Tài nguyên</span>
+                <span style={{ color: 'var(--accent-secondary)' }}>LIVE</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>CPU:</span>
+                <span style={{ color: 'white', fontWeight: 600 }}>{sysStats.cpu}%</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>RAM:</span>
+                <span style={{ color: 'white', fontWeight: 600 }}>{sysStats.ram}%</span>
+              </div>
+              {sysStats.gpu !== null && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>GPU:</span>
+                  <span style={{ color: 'white', fontWeight: 600 }}>{sysStats.gpu}%</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
               width: '36px',

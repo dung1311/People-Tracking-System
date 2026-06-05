@@ -2,12 +2,12 @@ import os
 import json
 import time
 import logging
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
 import cv2
 import numpy as np
 
-from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile, Query, Body
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlmodel import Session, select
 from sqlalchemy import delete
@@ -458,3 +458,223 @@ async def stream_camera(
             logger.error(f"Stream error: {e}")
             
     return StreamingResponse(frame_generator(), media_type="multipart/x-mixed-replace; boundary=frame")
+
+@router.get("/{camera_id}/rois")
+def get_camera_rois(
+    camera_id: int,
+    session: Session = Depends(get_session),
+    current_user=any_user
+):
+    camera = session.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    return camera.rois or []
+
+@router.post("/{camera_id}/rois")
+def update_camera_rois(
+    camera_id: int,
+    rois: list = Body(...),
+    session: Session = Depends(get_session),
+    current_user=operator_or_admin
+):
+    camera = session.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    # Save the list of ROIs directly
+    camera.rois = rois
+    session.add(camera)
+    session.commit()
+    session.refresh(camera)
+    return camera.rois
+
+@router.get("/{camera_id}/frame")
+def get_camera_frame(
+    camera_id: int,
+    session: Session = Depends(get_session),
+    current_user=any_user
+):
+    import io
+    camera = session.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+        
+    source = camera.source
+    minio = get_minio_client()
+    
+    if source.startswith("videos/"):
+        if not minio.fallback_mode:
+            local_cache_dir = "data/cache"
+            os.makedirs(local_cache_dir, exist_ok=True)
+            local_source = os.path.join(local_cache_dir, f"cam_{camera_id}_stream.mp4")
+            if not os.path.exists(local_source) or os.path.getsize(local_source) == 0:
+                object_name = source.replace("videos/", "", 1)
+                minio.download_file("videos", object_name, local_source)
+            source = local_source
+        else:
+            source = f"data/{source}"
+            
+    if not source.startswith("rtsp") and not os.path.exists(source):
+        if os.path.exists("mct_demo.mp4"):
+            source = "mct_demo.mp4"
+            
+    try:
+        cap = cv2.VideoCapture(source)
+        if not cap.isOpened():
+            raise HTTPException(status_code=500, detail="Could not open video source")
+        ret, frame = cap.read()
+        cap.release()
+        if not ret:
+            raise HTTPException(status_code=500, detail="Could not read frame from video source")
+            
+        ret, buffer = cv2.imencode('.jpg', frame)
+        if not ret:
+            raise HTTPException(status_code=500, detail="Failed to encode frame")
+        return StreamingResponse(io.BytesIO(buffer.tobytes()), media_type="image/jpeg")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error capturing frame: {e}")
+
+@router.get("/segments/all")
+def get_all_video_segments(
+    session: Session = Depends(get_session),
+    current_user=any_user
+):
+    return session.exec(select(VideoSegment)).all()
+
+class AnalyzeRoiRequest(BaseModel):
+    video_segment_id: int
+    roi_ids: Optional[List[str]] = None
+
+def is_point_in_polygon(x: float, y: float, polygon: list) -> bool:
+    num = len(polygon)
+    j = num - 1
+    c = False
+    for i in range(num):
+        if ((polygon[i][1] > y) != (polygon[j][1] > y)) and \
+                (x < (polygon[j][0] - polygon[i][0]) * (y - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0]):
+            c = not c
+        j = i
+    return c
+
+@router.post("/analyze-roi")
+def analyze_roi(
+    payload: AnalyzeRoiRequest,
+    session: Session = Depends(get_session),
+    current_user=any_user
+):
+    segment = session.get(VideoSegment, payload.video_segment_id)
+    if not segment:
+        raise HTTPException(status_code=404, detail="Video segment not found")
+        
+    camera = session.get(Camera, segment.camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+        
+    # Get all tracks for this segment
+    tracks = session.exec(
+        select(Track)
+        .where(Track.camera_id == segment.camera_id)
+        .where(Track.timestamp >= segment.start_time)
+        .where(Track.timestamp <= segment.end_time)
+        .order_by(Track.timestamp)
+    ).all()
+    
+    # Sort tracks manually just in case
+    tracks.sort(key=lambda t: t.timestamp)
+    
+    # Group tracks by person
+    person_tracks = {}
+    for t in tracks:
+        if t.person_id not in person_tracks:
+            person_tracks[t.person_id] = []
+        person_tracks[t.person_id].append(t)
+        
+    rois = camera.rois or []
+    if payload.roi_ids:
+        rois = [r for r in rois if r.get("id") in payload.roi_ids]
+        
+    results = {}
+    
+    for roi in rois:
+        roi_id = roi.get("id")
+        roi_name = roi.get("name", roi_id)
+        polygon = roi.get("polygon", [])
+        
+        if not polygon:
+            continue
+            
+        people_metrics = []
+        occupancy_map = {} # timestamp -> set of person_ids
+        
+        for person_id, t_list in person_tracks.items():
+            inside_records = []
+            for t in t_list:
+                # Bbox format: [x1, y1, x2, y2]
+                bbox = t.bbox
+                if len(bbox) >= 4:
+                    x_center = (bbox[0] + bbox[2]) / 2.0
+                    y_bottom = bbox[3]
+                    if is_point_in_polygon(x_center, y_bottom, polygon):
+                        inside_records.append(t)
+                        
+            if not inside_records:
+                continue
+                
+            # Compute dwell time and periods
+            # A person might enter and exit multiple times.
+            # Let's group consecutive frames or timestamps that are within a small threshold (e.g., 5 seconds or 125 frames at 25fps)
+            # For simplicity, let's sum up time durations of consecutive segments
+            total_dwell_seconds = 0.0
+            first_enter = inside_records[0].timestamp
+            last_exit = inside_records[-1].timestamp
+            
+            # Simple segmentation
+            current_segment_start = inside_records[0].timestamp
+            prev_time = inside_records[0].timestamp
+            
+            for rec in inside_records[1:]:
+                # If gap is larger than 5 seconds, consider it a new entry
+                if (rec.timestamp - prev_time).total_seconds() > 5.0:
+                    total_dwell_seconds += max(1.0, (prev_time - current_segment_start).total_seconds())
+                    current_segment_start = rec.timestamp
+                prev_time = rec.timestamp
+            total_dwell_seconds += max(1.0, (prev_time - current_segment_start).total_seconds())
+            
+            people_metrics.append({
+                "person_id": person_id,
+                "dwell_time_seconds": round(total_dwell_seconds, 1),
+                "entered_at": first_enter.isoformat(),
+                "exited_at": last_exit.isoformat()
+            })
+            
+            # Populate occupancy map
+            for rec in inside_records:
+                # Use timestamp rounded to nearest second for timeseries charts
+                ts_sec = rec.timestamp.replace(microsecond=0)
+                if ts_sec not in occupancy_map:
+                    occupancy_map[ts_sec] = set()
+                occupancy_map[ts_sec].add(person_id)
+                
+        # Format occupancy over time
+        occupancy_over_time = []
+        for ts, p_set in sorted(occupancy_map.items()):
+            occupancy_over_time.append({
+                "timestamp": ts.isoformat(),
+                "count": len(p_set)
+            })
+            
+        total_people = len(people_metrics)
+        avg_dwell = sum(p["dwell_time_seconds"] for p in people_metrics) / total_people if total_people > 0 else 0.0
+        max_occupancy = max([len(p_set) for p_set in occupancy_map.values()]) if occupancy_map else 0
+        
+        results[roi_id] = {
+            "roi_id": roi_id,
+            "roi_name": roi_name,
+            "total_people": total_people,
+            "average_dwell_time_seconds": round(avg_dwell, 1),
+            "max_occupancy": max_occupancy,
+            "people_metrics": people_metrics,
+            "occupancy_over_time": occupancy_over_time
+        }
+        
+    return results

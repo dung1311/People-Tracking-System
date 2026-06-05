@@ -1,6 +1,7 @@
 from typing import Optional
 from datetime import datetime
 from sqlmodel import Field, SQLModel, Relationship
+from sqlalchemy import Column, JSON
 
 class CameraBase(SQLModel):
     network_id: Optional[int] = Field(default=None, foreign_key="cameranetwork.id")
@@ -19,6 +20,9 @@ class CameraBase(SQLModel):
     # Calibration (mandatory for MCT)
     has_calibration: bool = Field(default=False)
     calibration_path: Optional[str] = None  # MinIO or local path
+    
+    # ROIs configured for this camera
+    rois: Optional[list[dict]] = Field(default=None, sa_column=Column(JSON))
 
 class Camera(CameraBase, table=True):
     network: Optional["CameraNetwork"] = Relationship(back_populates="cameras")

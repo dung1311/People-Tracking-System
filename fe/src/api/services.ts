@@ -178,3 +178,46 @@ export const SearchService = {
     return response.data;
   },
 };
+
+// System status service
+export const SystemService = {
+  getStatus: async () => {
+    const response = await apiClient.get<{
+      cpu: { usage_percent: number; cores: number };
+      ram: { total_gb: number; used_gb: number; free_gb: number; usage_percent: number };
+      gpu: Array<{ name: string; memory_total_mb: number; memory_used_mb: number; memory_free_mb: number; utilization_percent: number }>;
+    }>('/system/status');
+    return response.data;
+  },
+};
+
+// Extra Camera ROI & post-analysis services
+export const CameraRoiService = {
+  getRois: async (cameraId: number) => {
+    const response = await apiClient.get<any[]>(`/cameras/${cameraId}/rois`);
+    return response.data;
+  },
+  saveRois: async (cameraId: number, rois: any[]) => {
+    const response = await apiClient.post<any[]>(`/cameras/${cameraId}/rois`, rois);
+    return response.data;
+  },
+  getAllSegments: async () => {
+    const response = await apiClient.get<any[]>('/cameras/segments/all');
+    return response.data;
+  },
+  analyzeRoi: async (videoSegmentId: number, roiIds?: string[]) => {
+    const response = await apiClient.post<Record<string, {
+      roi_id: string;
+      roi_name: string;
+      total_people: number;
+      average_dwell_time_seconds: number;
+      max_occupancy: number;
+      people_metrics: Array<{ person_id: number; dwell_time_seconds: number; entered_at: string; exited_at: string }>;
+      occupancy_over_time: Array<{ timestamp: string; count: number }>;
+    }>>('/cameras/analyze-roi', {
+      video_segment_id: videoSegmentId,
+      roi_ids: roiIds
+    });
+    return response.data;
+  }
+};

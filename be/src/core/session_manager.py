@@ -1,4 +1,5 @@
 import os
+import json
 import yaml
 import time
 import cv2
@@ -281,7 +282,7 @@ class SessionManager:
                 logger.error(f"Session {session_id} not found in DB")
                 return
             session.status = "running"
-            session.started_at = datetime.utcnow()
+            session.started_at = datetime.now()
             db.add(session)
             db.commit()
             db.refresh(session)
@@ -596,13 +597,26 @@ class SessionManager:
             session = db.get(CameraNetwork, session_id)
             if session:
                 session.status = status_str
-                session.stopped_at = datetime.utcnow()
+                session.stopped_at = datetime.now()
                 session.total_frames = frames
                 session.total_global_ids = globals_count
                 session.avg_fps = avg_fps
                 if status_str == "completed":
                     session.output_video_path = f"recordings/{session_id}/output.mp4"
                     session.output_txt_dir = f"recordings/{session_id}/txt"
+                    
+                    # Also create VideoSegment for each camera in the network so they can be analyzed
+                    from models.video_segment import VideoSegment
+                    duration = (session.stopped_at - session.started_at).total_seconds() if (session.stopped_at and session.started_at) else 0.0
+                    for cam in session.cameras:
+                        segment = VideoSegment(
+                            camera_id=cam.id,
+                            file_path=session.output_video_path,
+                            start_time=session.started_at or session.created_at or datetime.now(),
+                            end_time=session.stopped_at,
+                            duration_seconds=duration
+                        )
+                        db.add(segment)
                 db.add(session)
                 db.commit()
                 

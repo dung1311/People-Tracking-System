@@ -30,6 +30,12 @@ def init_db():
             session.commit()
             
         SQLModel.metadata.create_all(engine)
+        
+        # Automatic column migration for Camera.rois
+        with Session(engine) as session:
+            session.exec(text("ALTER TABLE camera ADD COLUMN IF NOT EXISTS rois JSON;"))
+            session.commit()
+            
         logger.info("Init database success")
         from database.init_data import seed_db
         seed_db()
