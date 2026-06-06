@@ -203,6 +203,15 @@ def start_network_tracking(
             detail=f"Network is already in state: {db_network.status}"
         )
         
+    # Clear cached output video if it exists so that next fetch retrieves the new one
+    import os
+    cache_path = f"data/cache/output_videos/network_{network_id}_output.mp4"
+    if os.path.exists(cache_path):
+        try:
+            os.remove(cache_path)
+        except Exception as e:
+            logger.warning(f"Could not remove cached output video on start: {e}")
+
     mgr = get_session_manager()
     try:
         mgr.start_session(network_id)
