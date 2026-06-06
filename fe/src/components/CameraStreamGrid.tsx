@@ -39,7 +39,7 @@ const Modal = ({ children, onClose }: { children: React.ReactNode, onClose: () =
 export const CameraStreamGrid: React.FC<Props> = ({ cameras }) => {
     const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null);
 
-    const getStreamUrl = (id?: number) => id ? `http://localhost:8000/api/v1/stream/camera/${id}` : '';
+    const getStreamUrl = (id?: number) => id ? `${window.location.protocol}//${window.location.host}/api/v1/stream/camera/${id}` : '';
 
     return (
         <>

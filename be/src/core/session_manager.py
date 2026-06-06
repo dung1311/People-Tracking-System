@@ -550,20 +550,22 @@ class SessionManager:
                         "-preset", "fast",
                         h264_video_path
                     ]
-                    # Run re-encoding with 60s timeout
-                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=60.0)
+                    # Run re-encoding with 600s timeout
+                    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=600.0)
                     if result.returncode == 0:
                         logger.info("ffmpeg conversion to H.264 (yuv420p) completed successfully.")
                     else:
                         logger.error(f"ffmpeg conversion failed (code {result.returncode}): {result.stderr}")
                         # Fallback to original
+                        if os.path.exists(h264_video_path):
+                            os.remove(h264_video_path)
                         if os.path.exists(raw_video_path):
-                            if os.path.exists(h264_video_path):
-                                os.remove(h264_video_path)
                             os.rename(raw_video_path, h264_video_path)
                 except Exception as e:
                     logger.error(f"Failed to run ffmpeg video conversion: {e}")
                     # Fallback to original
+                    if os.path.exists(h264_video_path):
+                        os.remove(h264_video_path)
                     if os.path.exists(raw_video_path) and not os.path.exists(h264_video_path):
                         os.rename(raw_video_path, h264_video_path)
 

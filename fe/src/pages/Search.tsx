@@ -15,7 +15,7 @@ import {
   FileImage
 } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_URL = `${window.location.protocol}//${window.location.host}/api/v1`;
 
 // Helper component to display match with bbox
 function MatchItem({ group }: { group: SearchResult['matches'][0] }) {

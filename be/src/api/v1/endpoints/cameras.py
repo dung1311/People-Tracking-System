@@ -29,6 +29,46 @@ admin_only = Depends(RoleChecker([UserRole.ADMIN]))
 operator_or_admin = Depends(RoleChecker([UserRole.ADMIN, UserRole.OPERATOR]))
 any_user = Depends(get_current_active_user)
 
+def resolve_camera_source(camera_id: int, source: str) -> str:
+    if not source.startswith("videos/"):
+        return source
+        
+    minio = get_minio_client()
+    if minio.fallback_mode:
+        return f"data/{source}"
+        
+    import hashlib
+    import glob
+    local_cache_dir = "data/cache"
+    os.makedirs(local_cache_dir, exist_ok=True)
+    
+    # Generate a hash of the source path to uniquely identify this video version
+    source_hash = hashlib.md5(source.encode()).hexdigest()[:8]
+    local_source = os.path.join(local_cache_dir, f"cam_{camera_id}_{source_hash}_stream.mp4")
+    
+    # If this specific file doesn't exist, download it
+    if not os.path.exists(local_source) or os.path.getsize(local_source) == 0:
+        # Clean up any old cache files for this camera first
+        old_pattern = os.path.join(local_cache_dir, f"cam_{camera_id}_*_stream.mp4")
+        for old_file in glob.glob(old_pattern):
+            try:
+                os.remove(old_file)
+            except Exception as e:
+                logger.warning(f"Could not remove old cached file {old_file}: {e}")
+        # Also clean up the legacy unhashed file if it exists
+        legacy_file = os.path.join(local_cache_dir, f"cam_{camera_id}_stream.mp4")
+        if os.path.exists(legacy_file):
+            try:
+                os.remove(legacy_file)
+            except Exception as e:
+                logger.warning(f"Could not remove legacy cache file {legacy_file}: {e}")
+                
+        logger.info(f"Downloading stream source for camera {camera_id} (hash {source_hash}) from MinIO...")
+        object_name = source.replace("videos/", "", 1)
+        minio.download_file("videos", object_name, local_source)
+        
+    return local_source
+
 @router.post("/", response_model=CameraRead)
 def create_camera(
     *,
@@ -297,12 +337,25 @@ def get_thumbnail(
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
         
+    return JSONResponse(content={"url": f"/api/v1/cameras/{camera_id}/thumbnail/file"})
+
+@router.get("/{camera_id}/thumbnail/file")
+def get_thumbnail_file(
+    camera_id: int,
+    session: Session = Depends(get_session)
+):
+    camera = session.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+        
     minio = get_minio_client()
-    thumbnail_url = minio.get_presigned_url("thumbnails", f"{camera_id}/thumb.jpg")
-    
-    # If using local storage fallback, it returns the local path like `/static/thumbnails/cam_id/thumb.jpg`
-    # which is perfectly servable. In the frontend, we append base URL if needed, or rely on routing.
-    return JSONResponse(content={"url": thumbnail_url})
+    try:
+        obj = minio.get_object("thumbnails", f"{camera_id}/thumb.jpg")
+        return StreamingResponse(obj, media_type="image/jpeg")
+    except Exception as e:
+        logger.warning(f"Could not load thumbnail for camera {camera_id}: {e}")
+        # Try loading local fallback default or return 404
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
 
 class ConnectionCheckRequest(BaseModel):
     source: str
@@ -418,25 +471,7 @@ async def stream_camera(
     # Resolve the video source path
     # If the source is in MinIO format like 'videos/1/video.mp4', we must download it locally
     # to feed into cv2.VideoCapture, or use the direct local fallback path if available!
-    source = camera.source
-    minio = get_minio_client()
-    
-    if source.startswith("videos/"):
-        # Download from MinIO to a temporary file for streaming if running on MinIO
-        if not minio.fallback_mode:
-            local_cache_dir = "data/cache"
-            os.makedirs(local_cache_dir, exist_ok=True)
-            local_source = os.path.join(local_cache_dir, f"cam_{camera_id}_stream.mp4")
-            
-            # Download only if it doesn't exist or is empty
-            if not os.path.exists(local_source) or os.path.getsize(local_source) == 0:
-                logger.info(f"Downloading stream source for camera {camera_id} from MinIO...")
-                object_name = source.replace("videos/", "", 1)
-                minio.download_file("videos", object_name, local_source)
-            source = local_source
-        else:
-            # Fallback path is local path: 'data/videos/{camera_id}/{filename}'
-            source = f"data/{source}"
+    source = resolve_camera_source(camera_id, camera.source)
             
     # If it is a local path that cv2 can read, verify it exists
     if not source.startswith("rtsp") and not os.path.exists(source):
@@ -499,22 +534,10 @@ def get_camera_frame(
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
         
-    source = camera.source
-    minio = get_minio_client()
-    
-    if source.startswith("videos/"):
-        if not minio.fallback_mode:
-            local_cache_dir = "data/cache"
-            os.makedirs(local_cache_dir, exist_ok=True)
-            local_source = os.path.join(local_cache_dir, f"cam_{camera_id}_stream.mp4")
-            if not os.path.exists(local_source) or os.path.getsize(local_source) == 0:
-                object_name = source.replace("videos/", "", 1)
-                minio.download_file("videos", object_name, local_source)
-            source = local_source
-        else:
-            source = f"data/{source}"
+    source = resolve_camera_source(camera_id, camera.source)
             
     if not source.startswith("rtsp") and not os.path.exists(source):
+        logger.warning(f"Source file not found at {source}, falling back to mct_demo.mp4 for Camera {camera_id}")
         if os.path.exists("mct_demo.mp4"):
             source = "mct_demo.mp4"
             
@@ -522,6 +545,12 @@ def get_camera_frame(
         cap = cv2.VideoCapture(source)
         if not cap.isOpened():
             raise HTTPException(status_code=500, detail="Could not open video source")
+        
+        # Read a frame a bit into the video to avoid black frames (like the thumbnail)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total_frames > 10:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, min(total_frames // 10, total_frames - 1))
+            
         ret, frame = cap.read()
         cap.release()
         if not ret:
@@ -530,7 +559,13 @@ def get_camera_frame(
         ret, buffer = cv2.imencode('.jpg', frame)
         if not ret:
             raise HTTPException(status_code=500, detail="Failed to encode frame")
-        return StreamingResponse(io.BytesIO(buffer.tobytes()), media_type="image/jpeg")
+        
+        headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+        return StreamingResponse(io.BytesIO(buffer.tobytes()), media_type="image/jpeg", headers=headers)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error capturing frame: {e}")
 
@@ -570,12 +605,16 @@ def analyze_roi(
     if not camera:
         raise HTTPException(status_code=404, detail="Camera not found")
         
-    # Get all tracks for this segment
+    # Get all tracks for this segment with a buffer to handle timezone mismatches
+    from datetime import timedelta, datetime
+    start_buffer = segment.start_time - timedelta(hours=12)
+    end_buffer = segment.end_time + timedelta(hours=12) if segment.end_time else datetime.utcnow() + timedelta(hours=12)
+    
     tracks = session.exec(
         select(Track)
         .where(Track.camera_id == segment.camera_id)
-        .where(Track.timestamp >= segment.start_time)
-        .where(Track.timestamp <= segment.end_time)
+        .where(Track.timestamp >= start_buffer)
+        .where(Track.timestamp <= end_buffer)
         .order_by(Track.timestamp)
     ).all()
     

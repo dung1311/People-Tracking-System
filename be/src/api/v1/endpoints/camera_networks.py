@@ -1,6 +1,7 @@
 import logging
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 from datetime import datetime
 
@@ -281,13 +282,47 @@ def get_network_output_url(
     if not db_network:
         raise HTTPException(status_code=404, detail="Camera network not found")
         
-    if not db_network.output_video_path:
-        raise HTTPException(
-            status_code=404, 
-            detail="Output video not available for this session. It might have failed or is still running."
-        )
-        
     minio = get_minio_client()
     object_name = db_network.output_video_path.replace("recordings/", "", 1)
     presigned_url = minio.get_presigned_url("recordings", object_name)
     return {"url": presigned_url}
+
+@router.get("/{network_id}/output/file")
+def get_network_output_file(
+    network_id: int,
+    session: Session = Depends(get_session)
+):
+    import os
+    db_network = session.get(CameraNetwork, network_id)
+    if not db_network:
+        raise HTTPException(status_code=404, detail="Camera network not found")
+        
+    if not db_network.output_video_path:
+        raise HTTPException(status_code=404, detail="Output video not available")
+        
+    minio = get_minio_client()
+    try:
+        object_name = db_network.output_video_path.replace("recordings/", "", 1)
+        
+        # Download to a local cache file so we can serve via FileResponse (supports Range/seek)
+        cache_dir = "data/cache/output_videos"
+        os.makedirs(cache_dir, exist_ok=True)
+        local_path = os.path.join(cache_dir, f"network_{network_id}_output.mp4")
+        
+        # Only download if not already cached
+        if not os.path.exists(local_path) or os.path.getsize(local_path) == 0:
+            minio.download_file("recordings", object_name, local_path)
+        
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=local_path,
+            media_type="video/mp4",
+            filename=f"tracking_output_{network_id}.mp4",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "no-cache",
+            }
+        )
+    except Exception as e:
+        logger.warning(f"Could not load output video for network {network_id}: {e}")
+        raise HTTPException(status_code=404, detail="Video not found")

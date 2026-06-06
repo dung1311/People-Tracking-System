@@ -124,7 +124,7 @@ export function CameraNetworkDetail() {
     
     setWsStatus('connecting');
     const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProto}//localhost:8000/api/v1/ws/network/${networkId}`;
+    const wsUrl = `${wsProto}//${window.location.host}/api/v1/ws/network/${networkId}`;
     
     console.log(`Connecting to stream: ${wsUrl}`);
     const ws = new WebSocket(wsUrl);
@@ -215,10 +215,10 @@ export function CameraNetworkDetail() {
     setCreatedCamId(cam.id || null);
     setRois([]);
     setCurrentPoints([]);
-    setUploadStep('idle');
     setShowAddCamModal(true);
 
     if (cam.id) {
+      // Load frame for ROI drawing
       try {
         const { apiClient } = await import('../api/client');
         const response = await apiClient.get(`/cameras/${cam.id}/frame`, { responseType: 'blob' });
@@ -228,6 +228,7 @@ export function CameraNetworkDetail() {
         console.error('Error loading camera frame:', err);
       }
 
+      // Load existing ROIs
       try {
         const { CameraRoiService } = await import('../api/services');
         const currentRois = await CameraRoiService.getRois(cam.id);
@@ -235,6 +236,12 @@ export function CameraNetworkDetail() {
       } catch (err) {
         console.error('Error loading camera ROIs:', err);
       }
+
+      // Jump directly to combined edit mode (skip the upload-first step)
+      setUploadStep('roi_drawing');
+      setUploadProgressText('');
+    } else {
+      setUploadStep('idle');
     }
   };
 
@@ -399,15 +406,40 @@ export function CameraNetworkDetail() {
 
   const handleSaveRois = async () => {
     const activeCamId = createdCamId || editingCamId;
-    if (activeCamId) {
-      try {
-        const { CameraRoiService } = await import('../api/services');
-        await CameraRoiService.saveRois(activeCamId, rois);
-      } catch (err) {
-        console.error(err);
-        alert('Không thể lưu cấu hình ROI.');
-        return;
+    if (!activeCamId) {
+      await finishAddCamera();
+      return;
+    }
+
+    try {
+      // If editing, also update camera name/location and upload files
+      if (editingCamId) {
+        // Update camera name and location
+        if (camName.trim()) {
+          await CameraService.update(editingCamId, {
+            name: camName.trim(),
+            location: camLocation.trim() || null,
+          });
+        }
+
+        // Upload video if a new one was selected
+        if (videoFile) {
+          await CameraService.uploadVideo(editingCamId, videoFile);
+        }
+
+        // Upload calibration JSON if a new one was selected
+        if (calibFile) {
+          await CameraService.uploadCalibration(editingCamId, calibFile);
+        }
       }
+
+      // Save ROIs
+      const { CameraRoiService } = await import('../api/services');
+      await CameraRoiService.saveRois(activeCamId, rois);
+    } catch (err) {
+      console.error(err);
+      alert('Không thể lưu cấu hình. Vui lòng thử lại.');
+      return;
     }
     await finishAddCamera();
   };
@@ -956,7 +988,7 @@ export function CameraNetworkDetail() {
           zIndex: 1100
         }}>
           <Card style={{
-            width: '500px',
+            width: editingCamId ? '650px' : '500px',
             maxHeight: '90vh',
             overflowY: 'auto',
             padding: '2rem',
@@ -1121,11 +1153,121 @@ export function CameraNetworkDetail() {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 <h3 style={{ fontSize: '1.4rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Plus size={20} color="var(--accent-primary)" />
-                  Bước 2: Cấu hình khu vực giám sát (ROI)
+                  <Settings size={20} color="var(--accent-primary)" />
+                  {editingCamId ? 'Chỉnh sửa Camera' : 'Bước 2: Cấu hình khu vực giám sát (ROI)'}
                 </h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Vẽ đa giác để xác định khu vực giám sát. Bạn có thể bỏ qua nếu camera này không cần ROI.
+
+                {/* Camera info editing fields (only in edit mode) */}
+                {editingCamId && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem', backgroundColor: 'var(--bg-tertiary)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Tên Camera</label>
+                        <input
+                          type="text"
+                          value={camName}
+                          onChange={(e) => setCamName(e.target.value)}
+                          placeholder="Tên camera..."
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            color: 'white',
+                            fontSize: '0.85rem'
+                          }}
+                        />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>Vị trí</label>
+                        <input
+                          type="text"
+                          value={camLocation}
+                          onChange={(e) => setCamLocation(e.target.value)}
+                          placeholder="Vị trí địa lý..."
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            color: 'white',
+                            fontSize: '0.85rem'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                          Thay video nguồn (.mp4)
+                        </label>
+                        <div style={{
+                          border: '1px dashed var(--border-color)',
+                          borderRadius: '6px',
+                          padding: '10px',
+                          backgroundColor: 'var(--bg-secondary)',
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          position: 'relative'
+                        }}>
+                          <input
+                            type="file"
+                            accept="video/mp4"
+                            onChange={(e) => setVideoFile(e.target.files?.[0] || null)}
+                            style={{
+                              position: 'absolute',
+                              top: 0, left: 0, width: '100%', height: '100%',
+                              opacity: 0, cursor: 'pointer'
+                            }}
+                          />
+                          <p style={{ margin: 0, fontSize: '0.8rem', fontWeight: 500, color: videoFile ? 'var(--accent-secondary)' : 'var(--text-secondary)' }}>
+                            {videoFile ? `✓ ${videoFile.name}` : 'Chọn file mới (không bắt buộc)'}
+                          </p>
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '4px' }}>
+                          Thay file hiệu chuẩn (.json)
+                        </label>
+                        <div style={{
+                          border: '1px dashed var(--border-color)',
+                          borderRadius: '6px',
+                          padding: '10px',
+                          backgroundColor: 'var(--bg-secondary)',
+                          textAlign: 'center',
+                          cursor: 'pointer',
+                          position: 'relative'
+                        }}>
+                          <input
+                            type="file"
+                            accept=".json"
+                            onChange={(e) => setCalibFile(e.target.files?.[0] || null)}
+                            style={{
+                              position: 'absolute',
+                              top: 0, left: 0, width: '100%', height: '100%',
+                              opacity: 0, cursor: 'pointer'
+                            }}
+                          />
+                          <p style={{ margin: 0, fontSize: '0.8rem', fontWeight: 500, color: calibFile ? 'var(--accent-secondary)' : 'var(--text-secondary)' }}>
+                            {calibFile ? `✓ ${calibFile.name}` : 'Chọn file mới (không bắt buộc)'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {!editingCamId && (
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    Vẽ đa giác để xác định khu vực giám sát. Bạn có thể bỏ qua nếu camera này không cần ROI.
+                  </p>
+                )}
+
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600, margin: 0 }}>
+                  Khu vực giám sát (ROI)
                 </p>
 
                 <div style={{ position: 'relative', width: '100%', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', marginBottom: '4px' }}>

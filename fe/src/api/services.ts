@@ -153,8 +153,9 @@ export const CameraNetworkService = {
     return response.data;
   },
   getOutputUrl: async (id: number) => {
-    const response = await apiClient.get<{ url: string }>(`/camera_networks/${id}/output`);
-    return response.data;
+    // Use backend streaming endpoint instead of MinIO presigned URL to avoid CORS and codec issues
+    const baseUrl = `${window.location.protocol}//${window.location.host}/api/v1`;
+    return { url: `${baseUrl}/camera_networks/${id}/output/file` };
   },
 };
 

@@ -152,6 +152,18 @@ class MinIOClient:
             logger.error(f"MinIO download error: {e}")
             raise e
 
+    def get_object(self, bucket_name: str, object_name: str):
+        if self.fallback_mode:
+            local_path = f"data/{bucket_name}/{object_name}"
+            if os.path.exists(local_path):
+                return open(local_path, "rb")
+            raise Exception("Object not found")
+        try:
+            return self.client.get_object(bucket_name, object_name)
+        except Exception as e:
+            logger.error(f"MinIO get_object error: {e}")
+            raise e
+
     def delete_file(self, bucket_name: str, object_name: str):
         if self.fallback_mode:
             local_path = f"data/{bucket_name}/{object_name}"

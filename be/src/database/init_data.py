@@ -10,21 +10,26 @@ logger = logging.getLogger(__name__)
 def seed_db():
     with Session(engine) as session:
         # 1. Seed default Admin
-        admin_exists = session.exec(select(User).where(User.role == UserRole.ADMIN)).first()
+        import os
+        admin_username = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
+        admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "adminpassword123")
+        admin_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@example.com")
+
+        admin_exists = session.exec(select(User).where(User.username == admin_username)).first()
         if not admin_exists:
-            logger.info("Seeding default admin user...")
+            logger.info(f"Seeding default admin user '{admin_username}'...")
             default_admin = User(
-                username="admin",
-                email="admin@example.com",
+                username=admin_username,
+                email=admin_email,
                 role=UserRole.ADMIN,
-                hashed_password=get_password_hash("adminpassword123"),
+                hashed_password=get_password_hash(admin_password),
                 is_active=True
             )
             session.add(default_admin)
             session.commit()
-            logger.info("Default admin user 'admin' created successfully with password 'adminpassword123'")
+            logger.info(f"Default admin user '{admin_username}' created successfully")
         else:
-            logger.info("Admin user already exists")
+            logger.info(f"Admin user '{admin_username}' already exists")
 
         # 2. Seed default SCT Configuration
         sct_exists = session.exec(select(TrackingConfig).where(TrackingConfig.config_type == "sct", TrackingConfig.is_default == True)).first()
