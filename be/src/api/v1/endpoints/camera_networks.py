@@ -235,6 +235,11 @@ def stop_network_tracking(
             detail=f"Network is not running (current state: {db_network.status})"
         )
         
+    db_network.status = "stopping"
+    session.add(db_network)
+    session.commit()
+    session.refresh(db_network)
+    
     mgr = get_session_manager()
     try:
         mgr.stop_session(network_id)
@@ -335,3 +340,158 @@ def get_network_output_file(
     except Exception as e:
         logger.warning(f"Could not load output video for network {network_id}: {e}")
         raise HTTPException(status_code=404, detail="Video not found")
+
+from pydantic import BaseModel
+from models.video_segment import VideoSegment
+from models.track import Track
+from models.camera import Camera
+
+class NetworkAnalyzeRoiRequest(BaseModel):
+    batch_number: int
+
+def is_point_in_polygon(x: float, y: float, polygon: list) -> bool:
+    num = len(polygon)
+    j = num - 1
+    c = False
+    for i in range(num):
+        if ((polygon[i][1] > y) != (polygon[j][1] > y)) and \
+                (x < (polygon[j][0] - polygon[i][0]) * (y - polygon[i][1]) / (polygon[j][1] - polygon[i][1]) + polygon[i][0]):
+            c = not c
+        j = i
+    return c
+
+@router.post("/{network_id}/analyze-roi")
+def analyze_network_roi(
+    network_id: int,
+    payload: NetworkAnalyzeRoiRequest,
+    session: Session = Depends(get_session),
+    current_user=any_user
+):
+    db_network = session.get(CameraNetwork, network_id)
+    if not db_network:
+        raise HTTPException(status_code=404, detail="Camera network not found")
+        
+    results = {}
+    
+    # Process each camera in the network
+    for camera in db_network.cameras:
+        # Find VideoSegment for this camera and batch_number
+        segment = session.exec(
+            select(VideoSegment)
+            .where(VideoSegment.camera_id == camera.id)
+            .where(VideoSegment.batch_number == payload.batch_number)
+        ).first()
+        
+        if not segment:
+            continue
+            
+        # Get all tracks for this segment with a buffer to handle timezone mismatches
+        from datetime import timedelta, datetime
+        start_buffer = segment.start_time - timedelta(hours=12)
+        end_buffer = segment.end_time + timedelta(hours=12) if segment.end_time else datetime.utcnow() + timedelta(hours=12)
+        
+        tracks = session.exec(
+            select(Track)
+            .where(Track.camera_id == segment.camera_id)
+            .where(Track.timestamp >= start_buffer)
+            .where(Track.timestamp <= end_buffer)
+            .order_by(Track.timestamp)
+        ).all()
+        
+        # Sort tracks manually just in case
+        tracks.sort(key=lambda t: t.timestamp)
+        
+        # Group tracks by person
+        person_tracks = {}
+        for t in tracks:
+            # Filter tracks to be inside the batch time range
+            if segment.start_time <= t.timestamp <= (segment.end_time or datetime.utcnow()):
+                if t.person_id not in person_tracks:
+                    person_tracks[t.person_id] = []
+                person_tracks[t.person_id].append(t)
+                
+        rois = camera.rois or []
+        camera_roi_results = {}
+        
+        for roi in rois:
+            roi_id = roi.get("id")
+            roi_name = roi.get("name", roi_id)
+            polygon = roi.get("polygon", [])
+            
+            if not polygon:
+                continue
+                
+            people_metrics = []
+            occupancy_map = {} # timestamp -> set of person_ids
+            
+            for person_id, t_list in person_tracks.items():
+                inside_records = []
+                for t in t_list:
+                    bbox = t.bbox
+                    if len(bbox) >= 4:
+                        x_center = (bbox[0] + bbox[2]) / 2.0
+                        y_bottom = bbox[3]
+                        if is_point_in_polygon(x_center, y_bottom, polygon):
+                            inside_records.append(t)
+                            
+                if not inside_records:
+                    continue
+                    
+                # Compute dwell time and periods
+                total_dwell_seconds = 0.0
+                first_enter = inside_records[0].timestamp
+                last_exit = inside_records[-1].timestamp
+                
+                current_segment_start = inside_records[0].timestamp
+                prev_time = inside_records[0].timestamp
+                
+                for rec in inside_records[1:]:
+                    if (rec.timestamp - prev_time).total_seconds() > 5.0:
+                        total_dwell_seconds += max(1.0, (prev_time - current_segment_start).total_seconds())
+                        current_segment_start = rec.timestamp
+                    prev_time = rec.timestamp
+                total_dwell_seconds += max(1.0, (prev_time - current_segment_start).total_seconds())
+                
+                people_metrics.append({
+                    "person_id": person_id,
+                    "dwell_time_seconds": round(total_dwell_seconds, 1),
+                    "entered_at": first_enter.isoformat(),
+                    "exited_at": last_exit.isoformat()
+                })
+                
+                # Populate occupancy map
+                for rec in inside_records:
+                    ts_sec = rec.timestamp.replace(microsecond=0)
+                    if ts_sec not in occupancy_map:
+                        occupancy_map[ts_sec] = set()
+                    occupancy_map[ts_sec].add(person_id)
+                    
+            # Format occupancy over time
+            occupancy_over_time = []
+            for ts, p_set in sorted(occupancy_map.items()):
+                occupancy_over_time.append({
+                    "timestamp": ts.isoformat(),
+                    "count": len(p_set)
+                })
+                
+            total_people = len(people_metrics)
+            avg_dwell = sum(p["dwell_time_seconds"] for p in people_metrics) / total_people if total_people > 0 else 0.0
+            max_occupancy = max([len(p_set) for p_set in occupancy_map.values()]) if occupancy_map else 0
+            
+            camera_roi_results[roi_id] = {
+                "roi_id": roi_id,
+                "roi_name": roi_name,
+                "total_people": total_people,
+                "average_dwell_time_seconds": round(avg_dwell, 1),
+                "max_occupancy": max_occupancy,
+                "people_metrics": people_metrics,
+                "occupancy_over_time": occupancy_over_time
+            }
+            
+        results[camera.id] = {
+            "camera_id": camera.id,
+            "camera_name": camera.name,
+            "roi_results": camera_roi_results
+        }
+        
+    return results

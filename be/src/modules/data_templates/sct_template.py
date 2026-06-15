@@ -47,6 +47,11 @@ class TrackInfo:
         self.lost_age = 0
         self.hits = 1
 
+        # MCT-specific fields (set by pipeline after SCT processing)
+        self.location: Optional[np.ndarray] = None      # world-plane coordinate (2D)
+        self.keypoints: Optional[np.ndarray] = None      # pose keypoints (17, 3) COCO format
+        self.t_global_id: int = 0                        # temporary global ID for clustering
+
     def update(
         self,
         bbox: List[float],

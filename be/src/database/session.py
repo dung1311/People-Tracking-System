@@ -34,6 +34,7 @@ def init_db():
         # Automatic column migration for Camera.rois
         with Session(engine) as session:
             session.exec(text("ALTER TABLE camera ADD COLUMN IF NOT EXISTS rois JSON;"))
+            session.exec(text("ALTER TABLE video_segment ADD COLUMN IF NOT EXISTS batch_number INTEGER DEFAULT 1;"))
             session.commit()
             
         logger.info("Init database success")

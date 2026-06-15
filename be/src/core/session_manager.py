@@ -266,11 +266,14 @@ class SessionManager:
             
         thread = self.active_threads.get(session_id)
         if thread:
-            thread.join(timeout=10.0) # Wait up to 10 seconds for graceful exit
+            thread.join(timeout=2.0) # Wait up to 2 seconds for graceful exit
             
-        self.active_threads.pop(session_id, None)
-        self.active_pipelines.pop(session_id, None)
-        logger.info(f"Session {session_id} stopped.")
+        if thread and thread.is_alive():
+            logger.info(f"Session {session_id} is stopping in the background (e.g. ffmpeg encoding).")
+        else:
+            self.active_threads.pop(session_id, None)
+            self.active_pipelines.pop(session_id, None)
+            logger.info(f"Session {session_id} stopped.")
 
     def _run_session_worker(self, session_id: int):
         minio = get_minio_client()
@@ -609,18 +612,36 @@ class SessionManager:
                     session.output_video_path = f"recordings/{session_id}/output.mp4"
                     session.output_txt_dir = f"recordings/{session_id}/txt"
                     
+                    from datetime import timedelta
+                    batch_dur_min = int(os.getenv("BATCH_DURATION_MINUTES", "10"))
+                    batch_dur_sec = batch_dur_min * 60.0
+                    
                     # Also create VideoSegment for each camera in the network so they can be analyzed
                     from models.video_segment import VideoSegment
-                    duration = (session.stopped_at - session.started_at).total_seconds() if (session.stopped_at and session.started_at) else 0.0
+                    start_dt = session.started_at or session.created_at or datetime.now()
+                    end_dt = session.stopped_at or datetime.now()
+                    duration = (end_dt - start_dt).total_seconds()
+                    
+                    if duration <= 0:
+                        duration = 0.0
+                        
+                    num_batches = max(1, int((duration + batch_dur_sec - 1) // batch_dur_sec))
+                    
                     for cam in session.cameras:
-                        segment = VideoSegment(
-                            camera_id=cam.id,
-                            file_path=session.output_video_path,
-                            start_time=session.started_at or session.created_at or datetime.now(),
-                            end_time=session.stopped_at,
-                            duration_seconds=duration
-                        )
-                        db.add(segment)
+                        for b in range(num_batches):
+                            b_start = start_dt + timedelta(seconds=b * batch_dur_sec)
+                            b_end = start_dt + timedelta(seconds=min(duration, (b + 1) * batch_dur_sec))
+                            b_duration = (b_end - b_start).total_seconds()
+                            
+                            segment = VideoSegment(
+                                camera_id=cam.id,
+                                file_path=session.output_video_path,
+                                start_time=b_start,
+                                end_time=b_end,
+                                duration_seconds=b_duration,
+                                batch_number=b + 1
+                            )
+                            db.add(segment)
                 db.add(session)
                 db.commit()
                 

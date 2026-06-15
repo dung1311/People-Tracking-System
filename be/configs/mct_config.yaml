@@ -14,23 +14,56 @@ GLOBAL_TRACK:
   max_lost_age: 300        # frames before removing a lost global track
   feature_smooth: 0.1      # EMA factor for feature update
 
+# -------------------------------------------------------------------
+# Cross-camera clustering (AIC2024-style pairwise matching)
+# -------------------------------------------------------------------
+CLUSTERING:
+  emb_thresh: 0.30           # embedding distance threshold for hard gate
+  euc_thresh: 1.0            # euclidean distance threshold (world-plane)
+  pose_quality:
+    hw_thresh: 1.25           # min height/width ratio for quality filter
+    min_visible_keypoints: 6  # min visible COCO keypoints (excl. head)
+    min_head_keypoints: -1    # min visible head keypoints (-1 to disable)
+    min_num_kpts: 16          # crowd density filter (skip if too many kpts in bbox)
+
+# -------------------------------------------------------------------
+# Cluster-level tracker (MCTracker from AIC2024)
+# -------------------------------------------------------------------
+MC_TRACKER:
+  match_thresh: 0.999       # Hungarian matching threshold
+  max_time_lost: 18000       # frames before removing lost cluster
+  min_hits: 10               # frames before cluster is confirmed
+  emb_thresh: 0.30           # embedding threshold for lost cluster matching
+  euc_thresh: 1.5            # euclidean threshold for unconfirmed matching
+  refinement_interval: 5     # run self-refinement every N frames
+
+  # Self-refinement thresholds
+  refine_1st_emb: 0.325      # two-people detection threshold
+  refine_2nd_emb: 0.325      # same-person merge threshold (embedding)
+  refine_2nd_euc: 1.0        # same-person merge threshold (euclidean)
+  refine_3rd_emb: 0.30       # lost-cluster re-id threshold
+
+# -------------------------------------------------------------------
+# Perspective projection (pose-aware foot estimation)
+# -------------------------------------------------------------------
+PERSPECTIVE:
+  pose_thr: 0.3              # keypoint confidence threshold
+  ratio_smooth: 0.9          # EMA factor for body-part ratio update
+
+# -------------------------------------------------------------------
+# Camera definitions (dynamic – add/remove as needed)
+# -------------------------------------------------------------------
 CAMERAS:
-  64:
-    video: data/videos/cam64.mp4
-    calibration: data/cameras/cam64.json
-  65:
-    video: data/videos/cam65.mp4
-    calibration: data/cameras/cam65.json
-  66:
-    video: data/videos/cam66.mp4
-    calibration: data/cameras/cam66.json
-  62:
-    video: data/videos/cam62.mp4
-    calibration: data/cameras/cam62.json
+  1:
+    video: data/4cams/cam1.mp4
+    calibration: data/4cams/cam1_calibration.json
+  2:
+    video: data/4cams/cam2.mp4
+    calibration: data/4cams/cam2_calibration.json
 
 
 OUTPUT:
-  video: outputs/mct_output.mp4
+  video: outputs/mct4_output.mp4
   txt_dir: outputs/txt
-  fps: 25
-  draw_local: False
+  fps: 12
+  draw_local: True

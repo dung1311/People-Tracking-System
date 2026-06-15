@@ -8,6 +8,7 @@ class VideoSegmentBase(SQLModel):
     start_time: datetime = Field(index=True)
     end_time: Optional[datetime] = None
     duration_seconds: Optional[float] = None
+    batch_number: int = Field(default=1, index=True)
     
 class VideoSegment(VideoSegmentBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
