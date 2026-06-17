@@ -15,7 +15,7 @@ from database.session import engine
 from models.camera_network import CameraNetwork
 from models.camera import Camera
 from core.minio_client import get_minio_client
-from pipelines.mct_pipeline_2 import MCTPipeline2
+from pipelines.mct_hybrid_pipeline import MCTHybridPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class VideoWriterInterceptor:
             self.real_writer.release()
 
 
-class StreamableMCTPipeline2(MCTPipeline2):
+class StreamableMCTPipeline(MCTHybridPipeline):
     def __init__(self, sct_config: dict, mct_config_path: str, session_id: int, callback: Callable = None):
         self.session_id = session_id
         self.callback = callback
@@ -109,8 +109,7 @@ class StreamableMCTPipeline2(MCTPipeline2):
                 if not alive:
                     break
                 frame_count += 1
-
-                per_cam, frames = self._collect(frame_count)
+                per_cam, frames = self._collect()
                 mapping = self._match(per_cam, frame_count)
 
                 self._write_mot(mot_files, per_cam, mapping, frame_count)
@@ -189,7 +188,7 @@ class StreamableMCTPipeline2(MCTPipeline2):
 class SessionManager:
     def __init__(self):
         self.active_threads: Dict[int, threading.Thread] = {}
-        self.active_pipelines: Dict[int, StreamableMCTPipeline2] = {}
+        self.active_pipelines: Dict[int, StreamableMCTPipeline] = {}
         self.ws_callbacks: Dict[int, List[Callable]] = {}
         self.last_broadcast_time: Dict[int, float] = {}
 
@@ -289,76 +288,21 @@ class SessionManager:
             db.add(session)
             db.commit()
             db.refresh(session)
-            sct_config = session.sct_config
-            if not isinstance(sct_config, dict) or "DETECTION" not in sct_config:
-                logger.warning(f"SCT config for Session {session_id} is missing or has old structure. Auto-patching using configs/sct_config.yaml.")
-                base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                sct_yaml_path = os.path.join(base_dir, "configs", "sct_config.yaml")
-                loaded_sct = {}
-                if os.path.exists(sct_yaml_path):
-                    try:
-                        with open(sct_yaml_path, "r") as f:
-                            loaded_sct = yaml.safe_load(f)
-                    except Exception as e:
-                        logger.error(f"Failed to read fallback configs/sct_config.yaml: {e}")
-                
-                if loaded_sct and "DETECTION" in loaded_sct:
-                    sct_config = loaded_sct
-                else:
-                    sct_config = {
-                        "DETECTION": {
-                            "name": "yolov11",
-                            "yolov11": {
-                                "model_path": "weights/yolo11x.pt",
-                                "task": "detect",
-                                "imgsz": 640,
-                                "conf_thres": 0.5,
-                                "iou_thres": 0.7,
-                                "device": "cpu",
-                                "classes": 0,
-                                "max_det": 300
-                            }
-                        },
-                        "POSE_ESTIMATION": {
-                            "name": "rtmpose",
-                            "rtmpose": {
-                                "device": "cpu",
-                                "model_path": "weights/rtmpose-l_256x192/end2end.onnx",
-                                "input_size": [192, 256]
-                            }
-                        },
-                        "TRACKING": {
-                            "name": "sort",
-                            "sort": {
-                                "max_age": 30,
-                                "min_hits": 3,
-                                "iou_threshold": 0.3
-                            }
-                        },
-                        "TRACK_MANAGER": {
-                            "is_join_track": True,
-                            "smooth_factor": 0.1,
-                            "appearance_threshold": 0.5,
-                            "GALLERY": {
-                                "max_live_time": 24000,
-                                "min_hits": 3,
-                                "max_features": 50
-                            },
-                            "MATCHING": {
-                                "distance_threshold": 0.5
-                            },
-                            "EMBEDDING": {
-                                "name": "fastreid",
-                                "fastreid": "configs/osnet-ain_x1.0-ibn_512_256x192_ccdmmps.yaml"
-                            }
-                        }
-                    }
-                session.sct_config = sct_config
-                db.add(session)
-                db.commit()
-                db.refresh(session)
-            
+
+            # Always load SCT config from the canonical yaml file so that
+            # any edits to configs/sct_config.yaml take effect immediately
+            # on the next pipeline run — no DB round-trip needed.
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            sct_yaml_path = os.path.join(base_dir, "configs", "sct_config.yaml")
+            if not os.path.exists(sct_yaml_path):
+                logger.error(f"SCT config file not found at {sct_yaml_path}")
+                return
+            with open(sct_yaml_path, "r") as f:
+                sct_config = yaml.safe_load(f)
+            logger.info(f"Session {session_id} | Loaded SCT config from file: {sct_yaml_path}")
+
             # Dynamic device patching based on actual PyTorch CUDA availability
+            # (in-memory only – not written back to DB)
             device_str = "cpu"
             try:
                 import torch
@@ -367,28 +311,20 @@ class SessionManager:
             except Exception:
                 pass
 
-            sct_updated = False
             if isinstance(sct_config, dict):
                 if "DETECTION" in sct_config and "yolov11" in sct_config["DETECTION"]:
                     current_device = sct_config["DETECTION"]["yolov11"].get("device")
                     if current_device != device_str:
                         logger.info(f"Dynamically patching yolov11 device from '{current_device}' to '{device_str}' for Session {session_id}")
                         sct_config["DETECTION"]["yolov11"]["device"] = device_str
-                        sct_updated = True
-                
+
                 if "POSE_ESTIMATION" in sct_config and "rtmpose" in sct_config["POSE_ESTIMATION"]:
                     current_device = sct_config["POSE_ESTIMATION"]["rtmpose"].get("device")
                     if current_device != device_str:
                         logger.info(f"Dynamically patching rtmpose device from '{current_device}' to '{device_str}' for Session {session_id}")
                         sct_config["POSE_ESTIMATION"]["rtmpose"]["device"] = device_str
-                        sct_updated = True
 
-            if sct_updated:
-                session.sct_config = sct_config
-                db.add(session)
-                db.commit()
-                db.refresh(session)
-            
+
             mct_config = session.mct_config
             camera_ids = [cam.id for cam in session.cameras] if session.cameras else []
 
@@ -400,7 +336,8 @@ class SessionManager:
                     id=cam.id,
                     calibration_path=cam.calibration_path,
                     source=cam.source,
-                    rois=cam.rois
+                    rois=cam.rois,
+                    is_primary=getattr(cam, "is_primary", True)
                 )
                 for cam in cameras_db
             ]
@@ -427,11 +364,19 @@ class SessionManager:
                     logger.error(f"Error downloading calibration for Cam {cam.id}: {e}")
                     # Create empty/mock calibration as fallback
                     with open(local_calib_path, "w") as f:
-                        json.dump({"H_inv": [[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]]}, f)
+                        json.dump({
+                            "camera projection matrix": [[1.0,0.0,0.0,0.0], [0.0,1.0,0.0,0.0], [0.0,0.0,1.0,0.0]],
+                            "intrinsic matrix": [[1.0,0.0,0.0], [0.0,1.0,0.0], [0.0,0.0,1.0]],
+                            "homography matrix": [[1.0,0.0,0.0], [0.0,1.0,0.0], [0.0,0.0,1.0]]
+                        }, f)
             else:
                 # Standard fallback calibration if none is provided
                 with open(local_calib_path, "w") as f:
-                    json.dump({"H_inv": [[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]]}, f)
+                    json.dump({
+                        "camera projection matrix": [[1.0,0.0,0.0,0.0], [0.0,1.0,0.0,0.0], [0.0,0.0,1.0,0.0]],
+                        "intrinsic matrix": [[1.0,0.0,0.0], [0.0,1.0,0.0], [0.0,0.0,1.0]],
+                        "homography matrix": [[1.0,0.0,0.0], [0.0,1.0,0.0], [0.0,0.0,1.0]]
+                    }, f)
                     
             # Resolve video path
             local_video_path = cam.source
@@ -453,38 +398,26 @@ class SessionManager:
             cameras_cfg[str(cam.id)] = {
                 "video": local_video_path,
                 "calibration": local_calib_path,
-                "rois": getattr(cam, "rois", [])
+                "rois": getattr(cam, "rois", []),
+                "type": "primary" if getattr(cam, "is_primary", True) else "secondary"
             }
 
-        # Ensure MATCHING config has correct structure for MCTPipeline2 (homography & visual weights)
-        db_matching = mct_config.get("MATCHING", {})
-        if not isinstance(db_matching, dict) or "weights" not in db_matching or "homography" not in db_matching.get("weights", {}):
-            logger.warning(f"MCT config MATCHING section for Session {session_id} is missing or has old structure. Auto-patching to modern weights/thresholds.")
-            matching_cfg = {
-                "weights": {
-                    "homography": 0.5,
-                    "visual": 0.5
-                },
-                "thresholds": {
-                    "homography": 10.0,
-                    "visual_gate": 0.5,
-                    "homo_gate": 10.0,
-                    "combined": 0.6,
-                    "reid": 0.4
-                }
-            }
-        else:
-            matching_cfg = db_matching
-
-        # Ensure GLOBAL_TRACK has correct keys for MCTPipeline2
-        db_global_track = mct_config.get("GLOBAL_TRACK", {})
-        if not isinstance(db_global_track, dict) or "max_lost_age" not in db_global_track:
-            global_track_cfg = {
-                "max_lost_age": 300,
-                "feature_smooth": 0.1
-            }
-        else:
-            global_track_cfg = db_global_track
+        # Always read MATCHING and GLOBAL_TRACK directly from the canonical yaml file
+        # so that editing the yaml takes effect immediately on the next pipeline run.
+        import os as _os
+        _yaml_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "..", "configs", "mct_hybrid_config.yaml")
+        if not _os.path.exists(_yaml_path):
+            raise FileNotFoundError(f"MCT config yaml not found at {_yaml_path}")
+        with open(_yaml_path) as _f:
+            _yaml_cfg = yaml.safe_load(_f)
+        
+        matching_cfg = _yaml_cfg["MATCHING"]
+        global_track_cfg = _yaml_cfg["GLOBAL_TRACK"]
+        logger.info(
+            f"Session {session_id} | Loaded MCT config from yaml: "
+            f"reid={matching_cfg['thresholds'].get('reid')}, "
+            f"reid_secondary={matching_cfg['thresholds'].get('reid_secondary')}"
+        )
 
         # 3. Create full mct config dictionary
         full_mct_cfg = {
@@ -508,7 +441,7 @@ class SessionManager:
         def frame_callback(image, frame_id, active_globals, fps):
             self._broadcast_frame(session_id, image, frame_id, active_globals, fps)
 
-        pipeline = StreamableMCTPipeline2(
+        pipeline = StreamableMCTPipeline(
             sct_config=sct_config,
             mct_config_path=yaml_config_path,
             session_id=session_id,

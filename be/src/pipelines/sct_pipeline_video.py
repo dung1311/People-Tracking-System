@@ -41,7 +41,7 @@ class SCTVideoPipeline:
             selected_bboxes = [bboxes[i] for i in indices_to_keep]
 
             # Filter out boxes with max IoU > 0.5 (keep larger box)
-            selected_bboxes = filter_overlapping_boxes(selected_bboxes, iou_threshold=0.3)
+            selected_bboxes = selection_boxes(bboxes)
             
             frame_info = {
                     "cam_id": "1",
@@ -49,7 +49,7 @@ class SCTVideoPipeline:
                     'frame': frame
                 }
         
-            tracks = self.tracker.update(selected_bboxes, frame_info)
+            tracks = self.tracker.update(bboxes, frame_info)
             
             # Since selected_bboxes are already filtered by is_full_body, all generated tracks are full body
             frame_info["is_full_body"] = {int(trk[4]): True for trk in tracks}

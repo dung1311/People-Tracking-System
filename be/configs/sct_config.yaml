@@ -4,16 +4,16 @@ DETECTION:
     model_path: weights/yolo11x.pt
     task: detect
     imgsz: 640
-    conf_thres: 0.5
+    conf_thres: 0.3
     iou_thres: 0.7
-    device: cpu
+    device: cuda
     classes: 0
     max_det: 300
 
 POSE_ESTIMATION:
   name: rtmpose
   rtmpose:
-    device: cpu
+    device: cuda
     model_path: weights/rtmpose-l_256x192/end2end.onnx
     input_size: [192, 256]
 
@@ -21,7 +21,7 @@ TRACKING:
   name: sort
   sort:
     max_age: 30
-    min_hits: 3
+    min_hits: 5
     iou_threshold: 0.3
   ocsort:
     det_thresh: 0.4
@@ -44,6 +44,15 @@ TRACK_MANAGER:
   MATCHING:
     distance_threshold: 0.5
   EMBEDDING:
-    name: fastreid
+    name: onnx_reid
     fastreid: configs/osnet-ain_x1.0-ibn_512_256x192_ccdmmps.yaml
+    onnx_reid:
+      model_path: weights/ViT-B-16_30.onnx   # <-- fill in your .onnx path
+      device: cuda
+      input_size: [128, 256]   # [H, W] — height=128, width=256
+      mean: [127.5, 127.5, 127.5]
+      std:  [127.5, 127.5, 127.5]
+      # norm_type: half   # uncomment if model was trained with 0-1 via /255 style
+
+
 

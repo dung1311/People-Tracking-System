@@ -11,6 +11,7 @@ class CameraBase(SQLModel):
     source_type: str = Field(default="video")  # "rtsp" | "video" | "webcam"
     description: Optional[str] = None
     is_active: bool = Field(default=True)
+    is_primary: bool = Field(default=True)
     config_path: str = Field(default="configs/sct_config.yaml")
     
     location: Optional[str] = None

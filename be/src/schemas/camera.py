@@ -13,6 +13,7 @@ class CameraUpdate(CameraBase):
     source_type: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    is_primary: Optional[bool] = None
     config_path: Optional[str] = None
     location: Optional[str] = None
     resolution: Optional[str] = None

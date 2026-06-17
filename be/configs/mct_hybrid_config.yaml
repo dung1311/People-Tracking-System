@@ -1,0 +1,60 @@
+MATCHING:
+  weights:
+    homography: 0.5
+    visual: 0.5
+
+  thresholds:
+    homography: 0.5       # normalisation cap (world-plane units)
+    visual_gate: 0.8       # hard gate: reject if cosine dist > this
+    homo_gate: 1.0        # hard gate: reject if world-plane dist > this
+    combined: 0.6          # clustering edge threshold (after gates pass)
+    reid: 0.4            # cosine distance for primary globals assignment
+    reid_secondary: 0.6    # cosine distance for secondary to primary matching
+
+GLOBAL_TRACK:
+  max_lost_age: 3600        # frames before removing a lost global track
+  feature_smooth: 0.1      # EMA factor for feature update
+
+# -------------------------------------------------------------------
+# Cross-camera clustering (AIC2024-style pairwise matching)
+# -------------------------------------------------------------------
+CLUSTERING:
+  emb_thresh: 0.30           # embedding distance threshold for hard gate
+  euc_thresh: 1.0            # euclidean distance threshold (world-plane)
+  pose_quality:
+    hw_thresh: 1.25           # min height/width ratio for quality filter
+    min_visible_keypoints: 6  # min visible COCO keypoints (excl. head)
+    min_head_keypoints: -1    # min visible head keypoints (-1 to disable)
+    min_num_kpts: 16          # crowd density filter (skip if too many kpts in bbox)
+
+# -------------------------------------------------------------------
+# Camera definitions (dynamic – add/remove as needed)
+# -------------------------------------------------------------------
+CAMERAS:
+  1:
+    type: primary
+    video: data/4cams/cam1.mp4
+    calibration: data/4cams/cam1_calibration.json
+  2:
+    type: primary
+    video: data/4cams/cam2.mp4
+    calibration: data/4cams/cam2_calibration.json
+  3:
+    type: secondary
+    video: data/4cams/1781346498.mp4
+    rois:
+      - name: "Store Area 1"
+        polygon: [[100, 100], [500, 100], [500, 400], [100, 400]]
+  4:
+    type: secondary
+    video: data/4cams/1781408456.mp4
+    rois:
+      - name: "Store Area 2"
+        polygon: [[200, 200], [600, 200], [600, 500], [200, 500]]
+
+
+OUTPUT:
+  video: outputs/mct_hybrid_output.mp4
+  txt_dir: outputs/txt
+  fps: 12
+  draw_local: True
