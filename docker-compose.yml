@@ -59,6 +59,7 @@ services:
       - ./be/data:/app/data
       - ./be/outputs:/app/outputs
       - ./be/src:/app/src
+      - ./be/configs:/app/configs
     depends_on:
       - db
       - minio

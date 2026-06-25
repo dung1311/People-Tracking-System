@@ -6,6 +6,7 @@ export interface Camera {
   source_type: string;
   description?: string;
   is_active: boolean;
+  is_primary: boolean;
   config_path?: string;
   location?: string;
   resolution?: string;
@@ -23,6 +24,7 @@ export interface CameraCreate {
   source_type?: string;
   description?: string;
   is_active?: boolean;
+  is_primary?: boolean;
   location?: string;
 }
 

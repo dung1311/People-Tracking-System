@@ -4,9 +4,9 @@ MATCHING:
     visual: 0.5
 
   thresholds:
-    homography: 0.5       # normalisation cap (world-plane units)
+    homography: 0.05       # normalisation cap (world-plane units)
     visual_gate: 0.8       # hard gate: reject if cosine dist > this
-    homo_gate: 1.0        # hard gate: reject if world-plane dist > this
+    homo_gate: 0.3        # hard gate: reject if world-plane dist > 0.3m
     combined: 0.6          # clustering edge threshold (after gates pass)
     reid: 0.4            # cosine distance for primary globals assignment
     reid_secondary: 0.6    # cosine distance for secondary to primary matching

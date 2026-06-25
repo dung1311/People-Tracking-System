@@ -49,7 +49,7 @@ TRACK_MANAGER:
     onnx_reid:
       model_path: weights/ViT-B-16_30.onnx   # <-- fill in your .onnx path
       device: cuda
-      input_size: [128, 256]   # [H, W] — height=128, width=256
+      input_size: [256, 128]   # [H, W] — height=256, width=128
       mean: [127.5, 127.5, 127.5]
       std:  [127.5, 127.5, 127.5]
       # norm_type: half   # uncomment if model was trained with 0-1 via /255 style

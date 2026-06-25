@@ -157,6 +157,24 @@ export const CameraNetworkService = {
     const baseUrl = `${window.location.protocol}//${window.location.host}/api/v1`;
     return { url: `${baseUrl}/camera_networks/${id}/output/file` };
   },
+  analyzeRoi: async (networkId: number, batchNumber: number) => {
+    const response = await apiClient.post<Record<number, {
+      camera_id: number;
+      camera_name: string;
+      roi_results: Record<string, {
+        roi_id: string;
+        roi_name: string;
+        total_people: number;
+        average_dwell_time_seconds: number;
+        max_occupancy: number;
+        people_metrics: Array<{ person_id: number; dwell_time_seconds: number; entered_at: string; exited_at: string }>;
+        occupancy_over_time: Array<{ timestamp: string; count: number }>;
+      }>;
+    }>>(`/camera_networks/${networkId}/analyze-roi`, {
+      batch_number: batchNumber
+    });
+    return response.data;
+  },
 };
 
 export const TrackService = {

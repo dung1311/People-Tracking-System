@@ -187,7 +187,24 @@ class MCTHybridPipeline:
             feats = CrossCameraClusterer.l2_normalise(np.array([t.get_representative_feature() for t in primary_tracks], dtype=np.float64))
 
             clusters = self.clusterer.cluster(cam_arr, feet, feats, self.H_invs)
-            primary_mapping = self.global_manager.assign(clusters, feats, cam_arr, pid_arr, frame_count, log_file=self.reid_log_file)
+            
+            # Compute max homography distance within each cluster
+            world = CrossCameraClusterer._project_feet(feet, cam_arr, self.H_invs)
+            cluster_homo_dists = []
+            for c in clusters:
+                if len(c) < 2:
+                    cluster_homo_dists.append(0.0)
+                else:
+                    c_world = world[c]
+                    max_dist = 0.0
+                    for i in range(len(c)):
+                        for j in range(i + 1, len(c)):
+                            d = np.linalg.norm(c_world[i] - c_world[j])
+                            if d > max_dist:
+                                max_dist = d
+                    cluster_homo_dists.append(float(max_dist))
+                    
+            primary_mapping = self.global_manager.assign(clusters, feats, cam_arr, pid_arr, frame_count, log_file=self.reid_log_file, cluster_homo_dists=cluster_homo_dists)
             self.reid_log_file.flush()
             mapping.update(primary_mapping)
             active_primary_gids = set(primary_mapping.values())
@@ -217,31 +234,27 @@ class MCTHybridPipeline:
                 for t, gid, dist, best_gid in zip(valid_tracks, assigned_gids, distances, best_gids):
                     key = (cid, t.person_id)
 
-                    # Log the matching
-                    if dist is not None:
-                        status = "MATCHED" if gid is not None else "FAILED"
-                        self.reid_log_file.write(
-                            f"Frame {frame_count} | Cam {cid} | Local {t.person_id} | "
-                            f"Min Dist to GID {best_gid}: {dist:.4f} | Thresh: {self.th_reid_sec} | "
-                            f"Status: {status} | Assigned GID: {gid}\n"
-                        )
-                        self.reid_log_file.flush()
-
                     if key in self.secondary_mapping:
                         # Cached assignment – use previous gid, treat dist as 0 (highest priority)
-                        candidates.append((key, self.secondary_mapping[key], 0.0, True))
+                        candidates.append((key, self.secondary_mapping[key], 0.0, True, dist, best_gid, gid))
                     elif gid is not None:
-                        candidates.append((key, gid, dist if dist is not None else float("inf"), False))
+                        candidates.append((key, gid, dist if dist is not None else float("inf"), False, dist, best_gid, gid))
+                    else:
+                        # Even if no GID assigned, keep it in candidates list so we can log it
+                        candidates.append((key, None, float("inf"), False, dist, best_gid, None))
 
                 # Resolve conflicts: for each GID only keep the candidate with smallest distance
-                for key, gid, dist, from_cache in candidates:
-                    if gid not in gid_to_best or dist < gid_to_best[gid][1]:
-                        gid_to_best[gid] = (key, dist)
+                for key, gid, dist, from_cache, orig_dist, best_gid, reid_gid in candidates:
+                    if gid is not None:
+                        if gid not in gid_to_best or dist < gid_to_best[gid][1]:
+                            gid_to_best[gid] = (key, dist)
 
                 # Build final mapping, only winning candidates get the GID
                 winning_keys = {info[0] for info in gid_to_best.values()}
-                for key, gid, dist, from_cache in candidates:
-                    if key in winning_keys and gid_to_best.get(gid, (None,))[0] == key:
+                for key, gid, dist, from_cache, orig_dist, best_gid, reid_gid in candidates:
+                    final_gid = None
+                    if gid is not None and key in winning_keys and gid_to_best.get(gid, (None,))[0] == key:
+                        final_gid = gid
                         mapping[key] = gid
                         if not from_cache:
                             self.secondary_mapping[key] = gid
@@ -253,6 +266,20 @@ class MCTHybridPipeline:
                                 cid, key[1], gid,
                             )
                             del self.secondary_mapping[key]
+
+                    # Now safely log the outcome
+                    if orig_dist is not None:
+                        if final_gid is not None:
+                            status = "CACHED" if from_cache else "MATCHED"
+                        else:
+                            status = "FAILED"
+                            
+                        self.reid_log_file.write(
+                            f"Frame {frame_count} | Cam {cid} | Local {key[1]} | "
+                            f"Min Dist to GID {best_gid}: {orig_dist:.4f} | Thresh: {self.th_reid_sec} | "
+                            f"Status: {status} | Assigned GID: {final_gid}\n"
+                        )
+                self.reid_log_file.flush()
 
         return mapping
 
@@ -289,7 +316,7 @@ class MCTHybridPipeline:
             grid,
             f"Frame: {frame_count} | FPS: {fps:.1f} | "
             f"Globals: {self.global_manager.num_globals}",
-            (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2,
+            (30, 80), cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 255, 255), 4,
         )
 
         if self._writer is None:
@@ -333,7 +360,7 @@ class MCTHybridPipeline:
                 
                 label_parts = []
                 if self._draw_local:
-                    label_parts.append(f"L{t.person_id}")
+                    label_parts.append(f"Local {t.person_id}")
                 
                 # ROI check
                 in_roi = False
@@ -359,17 +386,20 @@ class MCTHybridPipeline:
                 # Thicker box if in ROI
                 thickness = 4 if in_roi else 2
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
-                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1.2, 3)
                 cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw, y1), color, -1)
                 cv2.putText(
                     frame, label, (x1 + 2, y1 - 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2,
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3,
                 )
 
+            active_locals = [t.person_id for t in per_cam.get(cid, []) if t.person_id is not None]
+            local_str = ", ".join(map(str, active_locals))
+            
             cv2.putText(
-                frame, f"Cam {cid} | F{frame_count}",
-                (10, frame.shape[0] - 15),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1,
+                frame, f"Cam {cid} | F{frame_count} | Locals: {local_str}",
+                (20, frame.shape[0] - 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3,
             )
             result.append(frame)
         return result

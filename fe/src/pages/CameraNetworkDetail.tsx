@@ -30,6 +30,7 @@ export function CameraNetworkDetail() {
   const [showAddCamModal, setShowAddCamModal] = useState(false);
   const [camName, setCamName] = useState('');
   const [camLocation, setCamLocation] = useState('');
+  const [isPrimary, setIsPrimary] = useState(true);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [calibFile, setCalibFile] = useState<File | null>(null);
   const [uploadStep, setUploadStep] = useState<'idle' | 'creating' | 'uploading_video' | 'uploading_calib' | 'finishing' | 'roi_drawing'>('idle');
@@ -212,6 +213,7 @@ export function CameraNetworkDetail() {
     setEditingCamId(cam.id || null);
     setCamName(cam.name || '');
     setCamLocation(cam.location || '');
+    setIsPrimary(cam.is_primary ?? true);
     setVideoFile(null);
     setCalibFile(null);
     setCreatedCamId(cam.id || null);
@@ -269,6 +271,7 @@ export function CameraNetworkDetail() {
         await CameraService.update(editingCamId, {
           name: camName.trim(),
           location: camLocation.trim() || null,
+          is_primary: isPrimary,
           ...(videoFile ? { source: `videos/${videoFile.name}` } : {})
         });
       } else {
@@ -279,6 +282,7 @@ export function CameraNetworkDetail() {
           source: `videos/${videoFile!.name}`,
           source_type: 'video',
           location: camLocation.trim() || undefined,
+          is_primary: isPrimary,
           is_active: false
         });
 
@@ -335,6 +339,7 @@ export function CameraNetworkDetail() {
     // Reset states
     setCamName('');
     setCamLocation('');
+    setIsPrimary(true);
     setVideoFile(null);
     setCalibFile(null);
     setCreatedCamId(null);
@@ -421,6 +426,7 @@ export function CameraNetworkDetail() {
           await CameraService.update(editingCamId, {
             name: camName.trim(),
             location: camLocation.trim() || null,
+            is_primary: isPrimary,
           });
         }
 
@@ -1067,6 +1073,18 @@ export function CameraNetworkDetail() {
                     fontSize: '0.9rem'
                   }}
                 />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                <input 
+                  type="checkbox" 
+                  id="is_primary"
+                  checked={isPrimary}
+                  onChange={e => setIsPrimary(e.target.checked)}
+                />
+                <label htmlFor="is_primary" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  Là Camera khởi tạo Gallery (Primary)
+                </label>
               </div>
 
               <div>

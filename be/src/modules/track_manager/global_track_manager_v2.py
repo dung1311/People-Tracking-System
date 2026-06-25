@@ -59,6 +59,7 @@ class GlobalTrackManagerV2:
         person_ids: np.ndarray,
         frame_id: int,
         log_file=None,
+        cluster_homo_dists: List[float] = None,
     ) -> Dict[Tuple[int, int], int]:
         """Given clusters from the clusterer, assign each track a global ID.
 
@@ -84,18 +85,26 @@ class GlobalTrackManagerV2:
             dist = distances[k]
             old_gid = assigned[k]
             best_gid = best_gids[k]
+            
+            size = len(clusters[k])
+            cam_lids = [f"C{int(cam_ids[idx])}:L{int(person_ids[idx])}" for idx in clusters[k]]
+            cluster_info = f" | Size: {size} ({', '.join(cam_lids)})"
+            
+            if cluster_homo_dists and len(cluster_homo_dists) > k:
+                cluster_info += f" | Max Homo Dist: {cluster_homo_dists[k]:.3f}m"
+            
             if old_gid is None:
                 if len(clusters[k]) >= 2:
                     assigned[k] = self._next_gid
                     self._next_gid += 1
                     if log_file:
-                        log_file.write(f"Frame {frame_id} | PRIMARY | Cluster {k} | Min Dist to GID {best_gid}: {dist if dist is not None else 'N/A'} | Status: NEW_CREATED | Assigned GID: {assigned[k]}\n")
+                        log_file.write(f"Frame {frame_id} | PRIMARY | Cluster {k}{cluster_info} | Min Dist to GID {best_gid}: {dist if dist is not None else 'N/A'} | Status: NEW_CREATED | Assigned GID: {assigned[k]}\n")
                 else:
                     if log_file:
-                        log_file.write(f"Frame {frame_id} | PRIMARY | Cluster {k} | Min Dist to GID {best_gid}: {dist if dist is not None else 'N/A'} | Status: REJECTED_SIZE | Assigned GID: None\n")
+                        log_file.write(f"Frame {frame_id} | PRIMARY | Cluster {k}{cluster_info} | Min Dist to GID {best_gid}: {dist if dist is not None else 'N/A'} | Status: REJECTED_SIZE | Assigned GID: None\n")
             else:
                 if log_file:
-                    log_file.write(f"Frame {frame_id} | PRIMARY | Cluster {k} | Min Dist to GID {best_gid}: {dist:.4f} | Status: REID_MATCHED | Assigned GID: {old_gid}\n")
+                    log_file.write(f"Frame {frame_id} | PRIMARY | Cluster {k}{cluster_info} | Min Dist to GID {best_gid}: {dist:.4f} | Status: REID_MATCHED | Assigned GID: {old_gid}\n")
 
         mapping = self._update_tracks(
             clusters, assigned, cluster_feats, cam_ids, person_ids, frame_id,

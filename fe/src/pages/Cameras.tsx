@@ -28,7 +28,7 @@ export function Cameras() {
   const imageRef = useRef<HTMLImageElement>(null);
   
   // Forms
-  const [newCamera, setNewCamera] = useState({ name: '', source: '', location: '', network_id: '' as number | '' });
+  const [newCamera, setNewCamera] = useState({ name: '', source: '', location: '', network_id: '' as number | '', is_primary: true });
   const [selectedCalibFile, setSelectedCalibFile] = useState<File | null>(null);
   const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<number, string>>({});
@@ -119,7 +119,8 @@ export function Cameras() {
           source: `videos/${modalVideoFile.name}`,
           location: newCamera.location,
           network_id: newCamera.network_id ? Number(newCamera.network_id) : undefined,
-          is_active: true
+          is_active: true,
+          is_primary: newCamera.is_primary
         });
         
         if (cam.id) {
@@ -131,12 +132,13 @@ export function Cameras() {
           source: newCamera.source,
           location: newCamera.location,
           network_id: newCamera.network_id ? Number(newCamera.network_id) : undefined,
-          is_active: true
+          is_active: true,
+          is_primary: newCamera.is_primary
         });
       }
 
       setIsModalOpen(false);
-      setNewCamera({ name: '', source: '', location: '', network_id: '' });
+      setNewCamera({ name: '', source: '', location: '', network_id: '', is_primary: true });
       setModalVideoFile(null);
       setConnectionStatus(null);
       setConnectionMsg('');
@@ -355,6 +357,11 @@ export function Cameras() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Video size={18} color="var(--accent-primary)" />
                   <span style={{ fontWeight: 600, fontSize: '1rem' }}>{cam.name}</span>
+                  {cam.is_primary ? (
+                    <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '12px', backgroundColor: 'var(--accent-primary)', color: 'black', fontWeight: 600 }}>Primary</span>
+                  ) : (
+                    <span style={{ fontSize: '0.65rem', padding: '2px 6px', borderRadius: '12px', backgroundColor: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}>Secondary</span>
+                  )}
                 </div>
                 {cam.has_calibration ? (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--success)' }}>
@@ -592,7 +599,11 @@ export function Cameras() {
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f59e0b', fontSize: '0.85rem', marginBottom: '12px' }}>
                     <AlertTriangle size={16} />
-                    <span>Camera chưa được hiệu chuẩn. Luồng multicam cần file hiệu chuẩn này để ánh xạ tọa độ 3D!</span>
+                    <span>
+                      {selectedCamera.is_primary 
+                        ? 'Camera chưa được hiệu chuẩn. BẮT BUỘC cần file hiệu chuẩn JSON vì đây là Camera Primary!' 
+                        : 'Camera chưa được hiệu chuẩn. (Không bắt buộc vì là Camera Secondary)'}
+                    </span>
                   </div>
                 )}
 
@@ -771,6 +782,18 @@ export function Cameras() {
                   <option value="">-- Không thuộc Network nào --</option>
                   {networks.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
                 </select>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                <input 
+                  type="checkbox" 
+                  id="is_primary"
+                  checked={newCamera.is_primary}
+                  onChange={e => setNewCamera({...newCamera, is_primary: e.target.checked})}
+                />
+                <label htmlFor="is_primary" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  Là Camera khởi tạo Gallery (Primary)
+                </label>
               </div>
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '10px' }}>
