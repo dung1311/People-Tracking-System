@@ -1,0 +1,316 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[vietnamese]{babel}
+\usepackage{geometry}
+\geometry{a4paper, margin=2cm}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{float}
+
+\begin{document}
+
+\section*{Đặc tả Use Case}
+
+Dưới đây là đặc tả chi tiết cho 12 Use Case của hệ thống People Tracking.
+
+% UC01
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC01 \\ \hline
+\textbf{Usecase name} & Tạo tài khoản mới \\ \hline
+\textbf{Description} & Admin đăng ký/tạo tài khoản mới và cấp vai trò (Role) cho nhân viên. \\ \hline
+\textbf{Actors} & Admin \\ \hline
+\textbf{Trigger event} & Admin chọn chức năng tạo tài khoản mới trên giao diện. \\ \hline
+\textbf{Pre-conditions} & Admin đã đăng nhập thành công vào hệ thống. \\ \hline
+\textbf{Post-condition} & Tài khoản mới được lưu vào CSDL và có thể đăng nhập. \\ \hline
+\textbf{Main flow} & 
+1. Admin bấm tạo người dùng mới. \newline
+2. Hệ thống hiển thị form nhập liệu. \newline
+3. Admin nhập thông tin (Email, Mật khẩu, Vai trò) và xác nhận. \newline
+4. Hệ thống kiểm tra Email/Username chưa tồn tại. \newline
+5. Hệ thống lưu tài khoản mới vào cơ sở dữ liệu. \newline
+6. Thông báo tạo tài khoản thành công. \\ \hline
+\textbf{Alternative flow} & 
+1. Thông tin không hợp lệ hoặc Email đã tồn tại. \newline
+2. Hệ thống báo lỗi. \newline
+3. Quay lại bước 3 của luồng chính. \\ \hline
+\end{tabular}
+\end{table}
+
+% UC02
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC02 \\ \hline
+\textbf{Usecase name} & Đăng nhập \\ \hline
+\textbf{Description} & Cho phép người dùng đăng nhập vào hệ thống để sử dụng các chức năng. \\ \hline
+\textbf{Actors} & User (Admin, Operator, Viewer) \\ \hline
+\textbf{Trigger event} & Người dùng truy cập trang đăng nhập. \\ \hline
+\textbf{Pre-conditions} & Không có. \\ \hline
+\textbf{Post-condition} & Người dùng nhận được Token xác thực và truy cập vào Dashboard. \\ \hline
+\textbf{Main flow} & 
+1. Người dùng nhập Username và Password. \newline
+2. Hệ thống kiểm tra thông tin trong CSDL. \newline
+3. Hệ thống xác thực mật khẩu (Bcrypt). \newline
+4. Hệ thống tạo JWT Token xác thực. \newline
+5. Hệ thống chuyển hướng người dùng vào Dashboard tương ứng với quyền. \\ \hline
+\textbf{Alternative flow} & 
+1. Sai Username hoặc Password. \newline
+2. Hệ thống thông báo lỗi đăng nhập. \newline
+3. Quay lại bước 1 của luồng chính. \\ \hline
+\end{tabular}
+\end{table}
+
+% UC03
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC03 \\ \hline
+\textbf{Usecase name} & Thêm camera mới (RTSP) \\ \hline
+\textbf{Description} & Thêm camera vào hệ thống bằng đường dẫn RTSP/Webcam và kiểm tra kết nối. \\ \hline
+\textbf{Actors} & Admin, Operator \\ \hline
+\textbf{Trigger event} & Actor chọn chức năng thêm camera RTSP. \\ \hline
+\textbf{Pre-conditions} & Actor đã đăng nhập. \\ \hline
+\textbf{Post-condition} & Camera mới được cấu hình và lưu vào hệ thống. \\ \hline
+\textbf{Main flow} & 
+1. Actor nhập thông tin camera và đường dẫn RTSP. \newline
+2. Actor bấm "Check Connection". \newline
+3. Hệ thống ping RTSP bằng OpenCV và trả về thông số (Resolution, FPS). \newline
+4. Actor xác nhận lưu camera. \newline
+5. Hệ thống lưu thông tin vào CSDL. \\ \hline
+\textbf{Alternative flow} & 
+1. Luồng RTSP không khả dụng. \newline
+2. Hệ thống thông báo lỗi kết nối. \newline
+3. Quay lại bước 1 luồng chính. \\ \hline
+\end{tabular}
+\end{table}
+
+% UC04
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC04 \\ \hline
+\textbf{Usecase name} & Tải lên video camera \\ \hline
+\textbf{Description} & Thêm camera bằng cách tải trực tiếp file video (.mp4) từ máy cá nhân. \\ \hline
+\textbf{Actors} & Admin, Operator \\ \hline
+\textbf{Trigger event} & Actor chọn tải lên Video camera. \\ \hline
+\textbf{Pre-conditions} & Actor đã đăng nhập. \\ \hline
+\textbf{Post-condition} & Video và Camera được lưu trên MinIO và CSDL. \\ \hline
+\textbf{Main flow} & 
+1. Actor chọn file video (.mp4) cần tải lên. \newline
+2. Actor bấm xác nhận. \newline
+3. Hệ thống tải file lên MinIO. \newline
+4. Hệ thống trích xuất thông số và tạo ảnh Thumbnail xem trước. \newline
+5. Hệ thống lưu Thumbnail lên MinIO và cập nhật CSDL. \newline
+6. Thông báo tải lên thành công. \\ \hline
+\textbf{Alternative flow} & 
+1. File tải lên không đúng định dạng. \newline
+2. Hệ thống báo lỗi. \newline
+3. Quay lại bước 1. \\ \hline
+\end{tabular}
+\end{table}
+
+% UC05
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC05 \\ \hline
+\textbf{Usecase name} & Upload file hiệu chuẩn (Calibration) \\ \hline
+\textbf{Description} & Tải lên file JSON chứa thông số Calibration của camera cho tính năng MCT. \\ \hline
+\textbf{Actors} & Admin, Operator \\ \hline
+\textbf{Trigger event} & Actor chọn camera và bấm Upload Calibration. \\ \hline
+\textbf{Pre-conditions} & Camera đã tồn tại trên hệ thống. \\ \hline
+\textbf{Post-condition} & File Calibration được lưu và gán cho Camera. \\ \hline
+\textbf{Main flow} & 
+1. Actor chọn file JSON chứa thông số hiệu chuẩn. \newline
+2. Hệ thống kiểm tra định dạng file (Homography, Intrinsic). \newline
+3. Hệ thống tải file lên kho lưu trữ MinIO. \newline
+4. Hệ thống cập nhật trạng thái đã có Calibration cho Camera. \newline
+5. Thông báo tải lên thành công. \\ \hline
+\textbf{Alternative flow} & 
+1. File JSON sai cấu trúc. \newline
+2. Hệ thống từ chối và báo lỗi định dạng. \newline
+3. Quay lại bước 1. \\ \hline
+\end{tabular}
+\end{table}
+
+% UC06
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC06 \\ \hline
+\textbf{Usecase name} & Quản lý cấu hình Tracking (Profile) \\ \hline
+\textbf{Description} & Tinh chỉnh các tham số AI (YOLO, ReID) và lưu thành Profile cấu hình mẫu. \\ \hline
+\textbf{Actors} & Admin, Operator \\ \hline
+\textbf{Trigger event} & Actor vào giao diện Cấu hình AI. \\ \hline
+\textbf{Pre-conditions} & Actor đã đăng nhập. \\ \hline
+\textbf{Post-condition} & Cấu hình mới được lưu và sẵn sàng áp dụng. \\ \hline
+\textbf{Main flow} & 
+1. Actor thay đổi các tham số thuật toán theo nhu cầu. \newline
+2. Actor bấm "Validate" để hệ thống kiểm tra tính hợp lệ. \newline
+3. Hệ thống xác nhận thông số hợp lệ. \newline
+4. Actor điền tên Profile và lưu. \newline
+5. Hệ thống lưu Profile vào CSDL. \\ \hline
+\textbf{Alternative flow} & 
+1. Thông số vượt quá giới hạn hoặc sai kiểu dữ liệu. \newline
+2. Hệ thống báo lỗi validation. \newline
+3. Quay lại bước 1. \\ \hline
+\end{tabular}
+\end{table}
+
+% UC07
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC07 \\ \hline
+\textbf{Usecase name} & Tạo Tracking Session \\ \hline
+\textbf{Description} & Khởi tạo một phiên theo dõi mới bao gồm danh sách camera và cấu hình tracking. \\ \hline
+\textbf{Actors} & Admin, Operator \\ \hline
+\textbf{Trigger event} & Actor bấm nút Tạo Session. \\ \hline
+\textbf{Pre-conditions} & Hệ thống đã có Camera và Profile cấu hình. \\ \hline
+\textbf{Post-condition} & Tracking Session được tạo ở trạng thái "created". \\ \hline
+\textbf{Main flow} & 
+1. Actor điền tên Session. \newline
+2. Actor chọn danh sách Camera cần theo dõi. \newline
+3. Actor chọn Profile cấu hình SCT/MCT. \newline
+4. Actor bấm Xác nhận. \newline
+5. Hệ thống lưu snapshot cấu hình và tạo Session vào CSDL. \\ \hline
+\textbf{Alternative flow} & 
+1. Actor chọn Camera thiếu Calibration cho chế độ MCT. \newline
+2. Hệ thống cảnh báo không đủ điều kiện theo dõi đa camera. \newline
+3. Quay lại bước 2. \\ \hline
+\end{tabular}
+\end{table}
+
+% UC08
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC08 \\ \hline
+\textbf{Usecase name} & Bắt đầu Tracking Session (Start) \\ \hline
+\textbf{Description} & Kích hoạt Tracking Engine chạy thuật toán nhận dạng trên các luồng video. \\ \hline
+\textbf{Actors} & Admin, Operator \\ \hline
+\textbf{Trigger event} & Actor bấm nút Start Session. \\ \hline
+\textbf{Pre-conditions} & Session ở trạng thái "created" hoặc "stopped". \\ \hline
+\textbf{Post-condition} & Tiến trình AI chạy ngầm, Session chuyển sang "running". \\ \hline
+\textbf{Main flow} & 
+1. Actor bấm nút Start. \newline
+2. Hệ thống cập nhật trạng thái Session thành "running". \newline
+3. Hệ thống gọi Background Task nạp các mô hình AI. \newline
+4. Hệ thống tải file Calibration từ MinIO. \newline
+5. Hệ thống bắt đầu quá trình xử lý Frame. \\ \hline
+\textbf{Alternative flow} & 
+1. Lỗi tài nguyên (thiếu RAM/VRAM) không thể nạp Model. \newline
+2. Hệ thống báo lỗi và chuyển Session sang trạng thái "failed". \\ \hline
+\end{tabular}
+\end{table}
+
+% UC09
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC09 \\ \hline
+\textbf{Usecase name} & Xem trực tiếp (Live Stream) \\ \hline
+\textbf{Description} & Xem trực tiếp kết quả tracking và các chỉ số thống kê qua WebSocket. \\ \hline
+\textbf{Actors} & Admin, Operator, Viewer \\ \hline
+\textbf{Trigger event} & Actor mở giao diện Dashboard của Session đang chạy. \\ \hline
+\textbf{Pre-conditions} & Tracking Session đang ở trạng thái "running". \\ \hline
+\textbf{Post-condition} & Màn hình liên tục cập nhật hình ảnh và thông số. \\ \hline
+\textbf{Main flow} & 
+1. Actor truy cập trang Live Stream. \newline
+2. Giao diện thiết lập kết nối WebSocket tới Server. \newline
+3. Engine sau khi xử lý Frame đẩy dữ liệu vào Queue. \newline
+4. Server phát (broadcast) dữ liệu cho các Actor đang kết nối. \newline
+5. Giao diện render hình ảnh, hộp giới hạn và biểu đồ. \\ \hline
+\textbf{Alternative flow} & 
+1. Mất mạng hoặc Server tạm thời ngắt kết nối. \newline
+2. Giao diện hiển thị trạng thái "Reconnecting...". \\ \hline
+\end{tabular}
+\end{table}
+
+% UC10
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC10 \\ \hline
+\textbf{Usecase name} & Dừng Tracking Session (Stop) \\ \hline
+\textbf{Description} & Kết thúc phiên theo dõi, giải phóng tài nguyên và xuất báo cáo video. \\ \hline
+\textbf{Actors} & Admin, Operator \\ \hline
+\textbf{Trigger event} & Actor bấm nút Stop Session. \\ \hline
+\textbf{Pre-conditions} & Session đang ở trạng thái "running". \\ \hline
+\textbf{Post-condition} & Session hoàn thành (completed) và lưu trữ kết quả. \\ \hline
+\textbf{Main flow} & 
+1. Actor bấm Stop. \newline
+2. Hệ thống gửi tín hiệu dừng vòng lặp AI. \newline
+3. Tracking Engine dừng và thu dọn bộ nhớ. \newline
+4. Hệ thống gộp Frame xuất thành Video (.mp4). \newline
+5. Hệ thống tải Video và File kết quả (TXT) lên MinIO. \newline
+6. Hệ thống chốt số liệu thống kê vào CSDL. \\ \hline
+\textbf{Alternative flow} & 
+1. MinIO không khả dụng khi đang lưu file. \newline
+2. Hệ thống tự động fallback lưu video vào ổ cứng máy chủ (Local Data). \\ \hline
+\end{tabular}
+\end{table}
+
+% UC11
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC11 \\ \hline
+\textbf{Usecase name} & Tìm kiếm người / Lịch sử di chuyển \\ \hline
+\textbf{Description} & Tra cứu lộ trình của một người dựa vào ID hoặc ảnh khuôn mặt. \\ \hline
+\textbf{Actors} & Admin, Operator, Viewer \\ \hline
+\textbf{Trigger event} & Actor tìm kiếm một ID hoặc ảnh đặc trưng. \\ \hline
+\textbf{Pre-conditions} & Đã có dữ liệu Tracking lưu trong CSDL pgvector. \\ \hline
+\textbf{Post-condition} & Hiển thị danh sách thời điểm và camera xuất hiện đối tượng. \\ \hline
+\textbf{Main flow} & 
+1. Actor nhập Global ID hoặc tải lên hình ảnh đối tượng. \newline
+2. Hệ thống trích xuất vector đặc trưng (nếu đầu vào là ảnh). \newline
+3. Hệ thống thực hiện K-NN Search qua pgvector để tìm các Track tương đồng. \newline
+4. Hệ thống trả về dữ liệu vị trí và khoảng thời gian. \newline
+5. Giao diện vẽ lộ trình di chuyển qua từng camera. \\ \hline
+\textbf{Alternative flow} & 
+1. Không tìm thấy đối tượng nào có độ tương đồng đủ cao. \newline
+2. Hệ thống thông báo "Không có dữ liệu phù hợp". \\ \hline
+\end{tabular}
+\end{table}
+
+% UC12
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|p{12cm}|}
+\hline
+\textbf{Usecase code} & UC12 \\ \hline
+\textbf{Usecase name} & Phân quyền người dùng \\ \hline
+\textbf{Description} & Thay đổi vai trò (Role) của người dùng hoặc vô hiệu hóa tài khoản. \\ \hline
+\textbf{Actors} & Admin \\ \hline
+\textbf{Trigger event} & Admin thay đổi Role của tài khoản trong giao diện quản lý. \\ \hline
+\textbf{Pre-conditions} & Admin đã đăng nhập. \\ \hline
+\textbf{Post-condition} & User bị ảnh hưởng sẽ có quyền mới ở lần truy cập tiếp theo. \\ \hline
+\textbf{Main flow} & 
+1. Admin truy cập danh sách người dùng. \newline
+2. Admin chọn một người dùng và đổi Role. \newline
+3. Admin bấm Lưu. \newline
+4. Hệ thống kiểm tra quyền Admin của request. \newline
+5. Cập nhật Role mới vào CSDL. \newline
+6. Thông báo thành công. \\ \hline
+\textbf{Alternative flow} & 
+1. Admin cố gắng vô hiệu hóa tài khoản của chính mình. \newline
+2. Hệ thống báo lỗi, từ chối thao tác. \\ \hline
+\end{tabular}
+\end{table}
+
+\end{document}

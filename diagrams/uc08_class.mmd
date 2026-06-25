@@ -1,0 +1,19 @@
+classDiagram
+    class SessionRouter {
+        +start_session(id: int, db) status
+    }
+    class SessionManager {
+        +start_pipeline(session_id: int)
+        -run_in_background(session_id)
+    }
+    class MCTPipeline {
+        +initialize(cameras, configs)
+        +run()
+    }
+    class TrackingSession {
+        +id: int
+        +status: str
+    }
+    SessionRouter --> SessionManager : Trigger Background Task
+    SessionManager --> MCTPipeline : Execute AI
+    SessionManager --> TrackingSession : Update Status

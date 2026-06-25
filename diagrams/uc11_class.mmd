@@ -1,0 +1,19 @@
+classDiagram
+    class SearchRouter {
+        +search_person(image: UploadFile, db) List[TrackResult]
+    }
+    class SearchService {
+        +find_similar_tracks(db, feature_vector) List[GalleryTrack]
+    }
+    class FeatureExtractor {
+        +extract(image_bytes) Vector
+    }
+    class GalleryTrack {
+        +id: int
+        +session_id: int
+        +camera_id: int
+        +feature_vector: Vector
+    }
+    SearchRouter --> FeatureExtractor : Extract Vector
+    SearchRouter --> SearchService : k-NN Query
+    SearchService --> GalleryTrack : pgvector Query

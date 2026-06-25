@@ -1,0 +1,17 @@
+classDiagram
+    class AuthRouter {
+        +login_access_token(form_data, db) Token
+    }
+    class AuthService {
+        +authenticate(db, email, password) User
+        +verify_password(plain_password, hashed_password) bool
+        +create_access_token(subject, expires_delta) str
+    }
+    class User {
+        +id: int
+        +username: str
+        +hashed_password: str
+        +role: Role
+    }
+    AuthRouter --> AuthService : Xác thực & Lấy Token
+    AuthService --> User : Truy xuất DB

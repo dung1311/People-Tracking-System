@@ -1,0 +1,18 @@
+classDiagram
+    class SessionRouter {
+        +create_session(data: SessionCreate, db) SessionRead
+    }
+    class SessionService {
+        +create_session(db, session_in: SessionCreate) TrackingSession
+        +snapshot_configs(sct_id, mct_id) Tuple[dict, dict]
+    }
+    class TrackingSession {
+        +id: int
+        +name: str
+        +status: str
+        +camera_ids: list
+        +sct_config: dict
+        +mct_config: dict
+    }
+    SessionRouter --> SessionService
+    SessionService --> TrackingSession

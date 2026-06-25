@@ -1,0 +1,22 @@
+sequenceDiagram
+    actor Operator as Admin/Operator
+    participant UI as Giao diện
+    participant API as Backend API
+    participant MinIO as Object Storage
+    participant DB as Database
+
+    Operator->>UI: Chọn Camera và bấm "Upload Calibration"
+    Operator->>UI: Chọn file .json và tải lên
+    UI->>API: POST /api/v1/cameras/{id}/calibration (Kèm file json)
+    API->>API: Validate định dạng JSON (Homography, Intrinsic...)
+    alt Hợp lệ
+        API->>MinIO: Lưu file lên bucket `calibrations`
+        MinIO-->>API: Trả về đường dẫn Object
+        API->>DB: Cập nhật Camera `has_calibration = True`, `calibration_path`
+        DB-->>API: Thành công
+        API-->>UI: Trả về 200 OK
+        UI-->>Operator: Thông báo "Tải cấu hình hiệu chuẩn thành công"
+    else Không hợp lệ
+        API-->>UI: Trả về lỗi định dạng 400 Bad Request
+        UI-->>Operator: Báo lỗi "File JSON không đúng cấu trúc"
+    end

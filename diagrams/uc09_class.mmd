@@ -1,0 +1,13 @@
+classDiagram
+    class WSRouter {
+        +websocket_endpoint(websocket: WebSocket, session_id: int)
+    }
+    class StreamManager {
+        +subscribe(session_id: int) asyncio.Queue
+        +broadcast(session_id: int, frame_data: dict)
+    }
+    class MCTPipeline {
+        +emit_frame(frame_data)
+    }
+    WSRouter --> StreamManager : WS Consume Queue
+    MCTPipeline --> StreamManager : Pipeline Produce Queue

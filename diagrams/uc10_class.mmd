@@ -1,0 +1,24 @@
+classDiagram
+    class SessionRouter {
+        +stop_session(id: int, db) status
+    }
+    class SessionManager {
+        +stop_pipeline(session_id: int)
+        +cleanup_and_save(session_id: int)
+    }
+    class MCTPipeline {
+        +stop()
+        +export_results()
+    }
+    class MinIOService {
+        +upload_file(bucket, object_name, data) str
+    }
+    class TrackingSession {
+        +status: str
+        +output_video_path: str
+        +total_frames: int
+    }
+    SessionRouter --> SessionManager : Send Stop Signal
+    SessionManager --> MCTPipeline : Terminate
+    SessionManager --> MinIOService : Upload MP4 Output
+    SessionManager --> TrackingSession : Update Final Stats

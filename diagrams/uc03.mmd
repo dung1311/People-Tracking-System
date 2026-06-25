@@ -1,0 +1,25 @@
+sequenceDiagram
+    actor Operator as Admin/Operator
+    participant UI as Giao diện (Frontend)
+    participant API as Backend API
+    participant CV as OpenCV Engine
+    participant DB as Database
+
+    Operator->>UI: Mở Modal "Thêm Camera", nhập RTSP URL
+    Operator->>UI: Bấm "Check Connection"
+    UI->>API: POST /api/v1/cameras/check-connection (Kèm RTSP URL)
+    API->>CV: cv2.VideoCapture(rtsp_url)
+    CV-->>API: Trả về kết quả (Độ phân giải, FPS) hoặc Lỗi
+    alt Kết nối thành công
+        API-->>UI: Thông báo "Thành công", Trả về Res & FPS
+        UI-->>Operator: Hiển thị trạng thái Xanh lá
+        Operator->>UI: Bấm "Lưu Camera"
+        UI->>API: POST /api/v1/cameras/
+        API->>DB: Lưu thông tin Camera mới
+        DB-->>API: Thành công
+        API-->>UI: 200 OK
+        UI-->>Operator: Thông báo "Thêm Camera thành công"
+    else Lỗi kết nối
+        API-->>UI: Lỗi "Không thể mở luồng RTSP"
+        UI-->>Operator: Hiển thị trạng thái Đỏ (Lỗi kết nối)
+    end

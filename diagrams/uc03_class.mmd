@@ -1,0 +1,23 @@
+classDiagram
+    class CameraRouter {
+        +check_connection(rtsp_url: str) ConnectionStatus
+        +create_camera(data: CameraCreate, db) CameraRead
+    }
+    class CameraService {
+        +create_camera(db, camera_in: CameraCreate) Camera
+        +check_stream(url: str) Tuple[bool, Resolution, FPS]
+    }
+    class OpenCVEngine {
+        +VideoCapture(url)
+        +read()
+    }
+    class Camera {
+        +id: int
+        +source_type: str
+        +source_uri: str
+        +resolution: str
+        +fps: int
+    }
+    CameraRouter --> CameraService : Xử lý Logic
+    CameraService --> OpenCVEngine : Ping RTSP Stream
+    CameraService --> Camera : Lưu DB

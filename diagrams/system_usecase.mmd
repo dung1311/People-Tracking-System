@@ -1,0 +1,59 @@
+flowchart LR
+  %% Actors
+  Admin((Admin))
+  Operator((Operator))
+  Viewer((Viewer))
+
+  %% Kế thừa
+  Admin -. "Kế thừa quyền" .-> Operator
+  Operator -. "Kế thừa quyền" .-> Viewer
+
+  %% Nhóm Xác thực & Người dùng
+  subgraph Auth [Xác thực & Người dùng]
+    UC02(Đăng nhập)
+    UC_Users(Quản lý Người dùng)
+    UC12(Phân quyền User)
+  end
+
+  %% Nhóm Quản lý Camera
+  subgraph Camera [Quản lý Camera]
+    UC03(Thêm Camera RTSP)
+    UC04(Tải Video Camera)
+    UC05(Upload JSON Calibration)
+  end
+
+  %% Nhóm Cấu hình
+  subgraph Config [Cấu hình AI]
+    UC06(Quản lý Config Profile)
+  end
+
+  %% Nhóm Session
+  subgraph Session [Quản lý Tracking Session]
+    UC07(Tạo Session Mới)
+    UC08(Bắt đầu Tracking - Start)
+    UC10(Dừng Tracking - Stop)
+  end
+
+  %% Nhóm Giám sát
+  subgraph Monitor [Giám sát & Tra cứu]
+    UC09(Xem Live Stream)
+    UC11(Tìm kiếm người / Lịch sử)
+  end
+
+  %% Liên kết Admin
+  Admin --> UC_Users
+  Admin --> UC12
+
+  %% Liên kết Viewer
+  Viewer --> UC02
+  Viewer --> UC09
+  Viewer --> UC11
+
+  %% Liên kết Operator
+  Operator --> UC03
+  Operator --> UC04
+  Operator --> UC05
+  Operator --> UC06
+  Operator --> UC07
+  Operator --> UC08
+  Operator --> UC10

@@ -1,0 +1,18 @@
+sequenceDiagram
+    actor Operator
+    participant UI as Giao diện
+    participant API as Backend API
+    participant DB as Database
+
+    Operator->>UI: Mở trang "Tracking Sessions", Bấm "Tạo mới"
+    UI->>API: GET /api/v1/cameras/
+    UI->>API: GET /api/v1/configs/ (Lấy danh sách Profile SCT/MCT)
+    API-->>UI: Trả về danh sách Data
+    Operator->>UI: Điền tên Session, chọn Camera (có calibration), chọn Profile
+    Operator->>UI: Bấm "Tạo Session"
+    UI->>API: POST /api/v1/sessions/ (Gửi name, camera_ids, configs)
+    API->>API: Gộp cấu hình config thành Snapshot để lưu cố định
+    API->>DB: Lưu Session vào bảng `tracking_session` với status="created"
+    DB-->>API: Thành công
+    API-->>UI: Trả về thông tin Session mới tạo (kèm ID)
+    UI-->>Operator: Chuyển hướng sang trang Chi tiết Session

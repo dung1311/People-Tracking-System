@@ -1,0 +1,20 @@
+sequenceDiagram
+    actor User
+    participant UI as Giao diện (Frontend)
+    participant API as Backend API
+    participant DB as Database (PostgreSQL)
+
+    User->>UI: Nhập Username và Password
+    UI->>API: POST /api/v1/auth/login
+    API->>DB: Truy vấn thông tin User theo Username
+    DB-->>API: Trả về dữ liệu User (bao gồm mật khẩu băm)
+    API->>API: So khớp mật khẩu (Bcrypt Verify)
+    alt Sai mật khẩu
+        API-->>UI: Trả về lỗi 401 Unauthorized
+        UI-->>User: Hiển thị thông báo "Sai tài khoản/mật khẩu"
+    else Đúng mật khẩu
+        API->>API: Tạo JWT Token (Kèm Role và User ID)
+        API-->>UI: Trả về JWT Token
+        UI->>UI: Lưu Token (Local Storage / Cookie)
+        UI-->>User: Chuyển hướng vào trang Dashboard
+    end

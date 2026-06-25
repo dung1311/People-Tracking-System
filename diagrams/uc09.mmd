@@ -1,0 +1,17 @@
+sequenceDiagram
+    actor Viewer
+    participant UI as Giao diện
+    participant API as WebSocket Endpoint
+    participant Engine as Tracking Engine
+
+    Viewer->>UI: Mở trang Dashboard/Live Stream
+    UI->>API: Khởi tạo kết nối ws://api/v1/ws/session/{id}
+    API-->>UI: Xác nhận kết nối (Connected)
+    
+    loop Mỗi khi có frame mới từ Camera
+        Engine->>API: Gửi Frame hình ảnh (Đã encode Base64) kèm Bounding Box qua Queue
+        Engine->>API: Gửi thống kê số liệu (FPS, Số lượng ID hiện hữu)
+        API->>UI: Truyền JSON / Binary data qua mạng WebSocket
+        UI->>UI: Render Frame lên Canvas hoặc Image Tag
+        UI->>UI: Cập nhật biểu đồ, chỉ số thống kê trên màn hình
+    end

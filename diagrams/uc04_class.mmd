@@ -1,0 +1,21 @@
+classDiagram
+    class CameraRouter {
+        +upload_video(id: int, file: UploadFile) CameraRead
+    }
+    class CameraService {
+        +process_video_upload(db, camera_id, file) Camera
+        +extract_metadata(file_path) Metadata
+    }
+    class MinIOService {
+        +upload_file(bucket, object_name, data) str
+    }
+    class Camera {
+        +id: int
+        +source_type: str
+        +source_uri: str
+        +resolution: str
+        +fps: int
+    }
+    CameraRouter --> CameraService : Upload
+    CameraService --> MinIOService : Lưu file .mp4 & thumbnail
+    CameraService --> Camera : Cập nhật Meta DB

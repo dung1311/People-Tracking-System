@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor Viewer
+    participant UI as Giao diện
+    participant API as Backend API
+    participant DB as Database (pgvector)
+
+    Viewer->>UI: Cắt ảnh khuôn mặt hoặc chọn 1 Global ID trong quá khứ
+    Viewer->>UI: Bấm "Tìm kiếm đối tượng"
+    UI->>API: GET /api/v1/search (Truyền ID hoặc Ảnh Base64)
+    alt Có ảnh đầu vào
+        API->>API: Trích xuất Vector đặc trưng (ReID feature vector) của ảnh
+    end
+    API->>DB: Truy vấn k-NN tìm kiếm Vector tương đồng qua pgvector (cosine_distance)
+    DB-->>API: Trả về danh sách Tracks/Camera mà người đó xuất hiện
+    API-->>UI: Trả về dữ liệu hành trình (Thời gian, Tọa độ, Camera, Thumbnail)
+    UI-->>Viewer: Vẽ lộ trình qua các camera và hiển thị danh sách các lần xuất hiện

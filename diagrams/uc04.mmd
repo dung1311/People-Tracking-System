@@ -1,0 +1,18 @@
+sequenceDiagram
+    actor Operator as Admin/Operator
+    participant UI as Giao diện (Frontend)
+    participant API as Backend API
+    participant MinIO as Object Storage
+    participant DB as Database
+
+    Operator->>UI: Chọn "Upload Video" làm nguồn Camera
+    Operator->>UI: Tải file .mp4 từ máy và điền tên
+    UI->>API: POST /api/v1/cameras/{id}/video (Multipart Form)
+    API->>MinIO: Upload file video lên bucket `videos`
+    MinIO-->>API: Trả về đường dẫn Object (URL)
+    API->>API: Dùng OpenCV đọc video lấy Res, FPS và tạo Thumbnail
+    API->>MinIO: Upload Thumbnail lên bucket `thumbnails`
+    API->>DB: Lưu/Cập nhật thông tin Camera (Đường dẫn, Res, FPS)
+    DB-->>API: Thành công
+    API-->>UI: Trả về 200 OK
+    UI-->>Operator: Hiển thị "Thêm Camera Video thành công"

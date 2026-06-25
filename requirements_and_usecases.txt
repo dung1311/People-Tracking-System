@@ -1,0 +1,85 @@
+Dựa trên phân tích codebase của hệ thống People Tracking System (Multi-Camera Tracking), dưới đây là tài liệu tổng hợp về các yêu cầu và Use Case của dự án.
+
+=======================================================
+1. YÊU CẦU CHỨC NĂNG (Functional Requirements)
+=======================================================
+- Quản lý Xác thực & Phân quyền (Auth & RBAC):
+  + Đăng nhập, đăng xuất và cấp phát JWT Token.
+  + Bảng phân quyền chi tiết cho 3 vai trò (Actors):
+    1. ADMIN (Quản trị viên - Toàn quyền):
+       * Có toàn quyền cao nhất trong hệ thống.
+       * Quản lý tài khoản người dùng: Thêm, sửa, phân quyền, xóa người dùng.
+       * Quản lý Camera: Thêm mới, cập nhật, xóa Camera.
+       * Có tất cả các quyền của Operator và Viewer (Upload calibration/video, Start/Stop sessions, Edit config, Xem live stream, Tìm kiếm người, Xem lịch sử).
+    2. OPERATOR (Người vận hành):
+       * Quản lý cấu hình & hoạt động: Được quyền tải lên file hiệu chuẩn (Upload calibration), tải video, chỉnh sửa cấu hình tracking (Edit tracking config).
+       * Điều khiển Session: Được phép Bắt đầu (Start) và Dừng (Stop) các Tracking Session.
+       * KHÔNG có quyền Quản lý tài khoản người dùng và KHÔNG được quyền tạo mới hay xóa Camera.
+       * Có tất cả các quyền của Viewer.
+    3. VIEWER (Người xem):
+       * Quyền hạn giới hạn ở mức độ "Đọc" (Read-only).
+       * Được phép xem trực tiếp video (View live streams).
+       * Được phép tra cứu, tìm kiếm đối tượng (Search persons) và xem lịch sử tracking (View tracks/history).
+       * KHÔNG có quyền thực hiện bất kỳ thao tác Thêm/Sửa/Xóa hay can thiệp vào tiến trình tracking.
+
+- Quản lý Camera:
+  + Thêm mới camera qua nhiều nguồn: Luồng trực tiếp (RTSP/Webcam) hoặc tải lên Video cục bộ.
+  + Kiểm tra kết nối (Check Connection) để lấy thông số độ phân giải và FPS thực tế.
+  + Tự động trích xuất ảnh xem trước (Thumbnail) cho camera.
+  + Quản lý file hiệu chuẩn (Calibration): Tải lên và tải xuống file JSON cấu hình hiệu chuẩn cho từng camera (bắt buộc cho MCT).
+  + Cập nhật và xóa camera khỏi hệ thống.
+
+- Quản lý Phiên theo dõi (Tracking Session):
+  + Tạo phiên theo dõi mới với các camera và cấu hình tracking (SCT/MCT) mong muốn.
+  + Bắt đầu (Start) và Dừng (Stop) tiến trình theo dõi.
+  + Xem danh sách và chi tiết các phiên theo dõi cùng các chỉ số thống kê (Tổng số frame, FPS trung bình, tổng số đối tượng/Global IDs).
+  + Xem lại video kết quả (Output video) và tải file dữ liệu hành trình (tracks) sau khi session kết thúc.
+
+- Quản lý Cấu hình (Configuration Management):
+  + Tạo, đọc, cập nhật, xóa (CRUD) các bộ cấu hình tham số cho mô hình SCT (Detector confidence, tracker threshold) và MCT (ReID/Time/Spatial matching threshold).
+  + Đặt cấu hình mặc định và validate định dạng (YAML/JSON) trước khi lưu.
+
+- Giám sát & Live Streaming thời gian thực:
+  + Phát luồng video (stream frame) và gửi các thông số thống kê (FPS, số lượng người) thời gian thực theo từng camera và theo session lên giao diện thông qua WebSocket.
+
+- Lưu trữ Dữ liệu:
+  + Tích hợp lưu trữ MinIO để chứa Video gốc, file Calibration, Snapshot, Video Output và Thumbnail.
+
+- Tra cứu đối tượng (Search & History):
+  + Tìm kiếm người (Person Search) dựa trên đặc trưng nhận dạng (ReID vectors) lưu trong CSDL pgvector.
+  + Xem lại lịch sử di chuyển (tracks) của đối tượng qua nhiều camera.
+
+=======================================================
+2. YÊU CẦU PHI CHỨC NĂNG (Non-functional Requirements)
+=======================================================
+- Hiệu năng & Xử lý đồng thời (Performance & Concurrency):
+  + Hệ thống API (FastAPI) không bị chặn (non-blocking) khi chạy các tác vụ nặng (YOLO, ReID). Các Tracking Pipeline được chạy ngầm qua Background Tasks/Threads.
+  + Tối ưu truyền tải WebSocket bằng hàng đợi (asyncio.Queue) để không làm nghẽn luồng nhận dạng ảnh.
+
+- Độ tin cậy & Fallback (Reliability & Robustness):
+  + Tính năng Fallback cực kỳ bền bỉ: Tự động chuyển qua lưu trữ cục bộ (Local Storage ở thư mục `data/`) nếu MinIO bị mất kết nối hoặc chưa cấu hình.
+  + Hỗ trợ chạy các mô hình AI hoàn toàn trên CPU để an toàn và tránh xung đột khi có sự cố với Nvidia Driver (ví dụ RuntimeError do driver cũ).
+
+- Kiến trúc & Khả năng mở rộng (Architecture & Scalability):
+  + Thiết kế chuẩn RESTful API kết hợp WebSocket cho Real-time communication.
+  + Tách bạch các dịch vụ (Microservices/Dockerized): Database (PostgreSQL), Object Storage (MinIO), Backend (FastAPI), Frontend (React/Vite).
+
+- Bảo mật (Security):
+  + Mật khẩu được mã hóa băm (bcrypt).
+  + Mọi API thao tác hệ thống (ngoài xem live stream) đều được bảo vệ bằng JWT Token và Middleware kiểm tra Role.
+
+=======================================================
+3. CÁC USE CASE CÓ TRONG CODE
+=======================================================
+- UC01: Admin đăng ký/tạo tài khoản mới và cấp vai trò cho nhân viên.
+- UC02: Người dùng đăng nhập vào hệ thống và nhận Token xác thực.
+- UC03: Admin/Operator thêm camera mới, nhập luồng RTSP và bấm "Check Connection" để xác nhận camera hoạt động.
+- UC04: Admin/Operator thêm camera bằng cách tải trực tiếp file video (.mp4) từ máy tính cá nhân.
+- UC05: Admin/Operator tải lên file JSON (Calibration) cho một camera cụ thể để phục vụ cho tính năng Multi-Camera Tracking.
+- UC06: Admin/Operator cấu hình và tinh chỉnh các tham số AI (Ngưỡng tự tin YOLO, khoảng cách ReID) lưu thành các Profile mẫu.
+- UC07: Operator tạo một Tracking Session mới, chọn các Camera muốn chạy và áp dụng Profile cấu hình.
+- UC08: Operator kích hoạt tiến trình "Start Tracking" cho một Session.
+- UC09: Viewer/Operator mở giao diện Dashboard để xem trực tiếp hình ảnh theo dõi (Live Grid) và chỉ số FPS qua WebSocket.
+- UC10: Operator bấm "Stop" để kết thúc Session, hệ thống tự động lưu video tổng hợp lên MinIO.
+- UC11: Viewer tìm kiếm và xem lại quỹ đạo di chuyển của một người (nhờ vào việc so khớp vector đặc trưng pgvector) sau khi hệ thống Tracking hoàn tất.
+- UC12: Admin xem danh sách toàn bộ User và thực hiện thay đổi quyền truy cập hoặc vô hiệu hóa một người dùng.

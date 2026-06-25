@@ -1,0 +1,17 @@
+classDiagram
+    class ConfigRouter {
+        +validate_config(data: ConfigCreate) bool
+        +create_config(data: ConfigCreate, db) ConfigRead
+    }
+    class ConfigService {
+        +create(db, obj_in: ConfigCreate) TrackingConfig
+        +validate_schema(data: dict) bool
+    }
+    class TrackingConfig {
+        +id: int
+        +name: str
+        +config_type: str
+        +config_data: dict
+    }
+    ConfigRouter --> ConfigService : Delegate
+    ConfigService --> TrackingConfig : ORM Model

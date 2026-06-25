@@ -1,0 +1,21 @@
+sequenceDiagram
+    actor Admin
+    participant UI as Giao diện (Frontend)
+    participant API as Backend API
+    participant DB as Database (PostgreSQL)
+
+    Admin->>UI: Nhập thông tin User mới (Tên, Email, Mật khẩu, Vai trò)
+    UI->>API: POST /api/v1/auth/register (Kèm Token Admin)
+    API->>API: Kiểm tra quyền Admin (RBAC)
+    API->>DB: Kiểm tra Email/Username tồn tại
+    alt Đã tồn tại
+        DB-->>API: Trả về lỗi
+        API-->>UI: Lỗi "User đã tồn tại"
+        UI-->>Admin: Hiển thị thông báo lỗi
+    else Chưa tồn tại
+        API->>API: Mã hóa mật khẩu (Bcrypt)
+        API->>DB: Lưu thông tin User mới vào bảng `user`
+        DB-->>API: Xác nhận lưu thành công
+        API-->>UI: Trả về thông tin User vừa tạo
+        UI-->>Admin: Thông báo "Tạo tài khoản thành công"
+    end

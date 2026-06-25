@@ -1,0 +1,18 @@
+sequenceDiagram
+    actor Admin
+    participant UI as Giao diện
+    participant API as Backend API
+    participant DB as Database
+
+    Admin->>UI: Mở trang "Quản lý Người Dùng"
+    UI->>API: GET /api/v1/users/ (Kèm Token Admin)
+    API->>DB: Truy vấn toàn bộ danh sách User
+    DB-->>API: Trả về danh sách
+    API-->>UI: Hiển thị danh sách lên bảng dữ liệu
+    Admin->>UI: Chọn User A, đổi Role thành "VIEWER" và bấm "Lưu"
+    UI->>API: PATCH /api/v1/users/{id}
+    API->>API: Kiểm tra JWT Token xem có đúng quyền Admin không
+    API->>DB: Cập nhật Role cho User A trong Database
+    DB-->>API: Xác nhận thành công
+    API-->>UI: 200 OK
+    UI-->>Admin: Thông báo "Cập nhật quyền thành công"

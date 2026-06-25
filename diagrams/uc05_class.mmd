@@ -1,0 +1,19 @@
+classDiagram
+    class CameraRouter {
+        +upload_calibration(id: int, file: UploadFile) Dict
+    }
+    class CameraService {
+        +update_calibration(db, camera_id, file) Camera
+        +validate_calibration_json(data: dict) bool
+    }
+    class MinIOService {
+        +upload_file(bucket, object_name, data) str
+    }
+    class Camera {
+        +id: int
+        +has_calibration: bool
+        +calibration_path: str
+    }
+    CameraRouter --> CameraService : Parse JSON
+    CameraService --> MinIOService : Lưu S3 Bucket
+    CameraService --> Camera : Đánh dấu has_calib

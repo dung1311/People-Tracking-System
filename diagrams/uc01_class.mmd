@@ -1,0 +1,18 @@
+classDiagram
+    class UserRouter {
+        +register_user(data: UserCreate, db, current_user) UserRead
+    }
+    class AuthService {
+        +get_password_hash(password: str) str
+        +create_user(db, user_in: UserCreate) User
+        +get_user_by_email(db, email: str) User
+    }
+    class User {
+        +id: int
+        +username: str
+        +email: str
+        +hashed_password: str
+        +role: Role
+    }
+    UserRouter --> AuthService : Gọi hàm xử lý
+    AuthService --> User : Tương tác DB

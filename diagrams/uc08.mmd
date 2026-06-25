@@ -1,0 +1,16 @@
+sequenceDiagram
+    actor Operator
+    participant UI as Giao diện
+    participant API as Backend API
+    participant DB as Database
+    participant Engine as Tracking Engine (Background Task)
+    participant MinIO as Object Storage
+
+    Operator->>UI: Bấm nút "Start Tracking"
+    UI->>API: POST /api/v1/sessions/{id}/start
+    API->>DB: Cập nhật status="running"
+    API->>Engine: Gửi lệnh Trigger Session chạy ngầm
+    Engine->>MinIO: Kéo file Calibration và cấu hình
+    Engine->>Engine: Khởi tạo các mô hình AI (YOLO, Pose, FastReID)
+    API-->>UI: Trả về 200 OK (Đã bắt đầu tiến trình)
+    UI-->>Operator: Hiển thị trạng thái "Running" và mở kết nối Live Stream

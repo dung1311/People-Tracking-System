@@ -1,0 +1,15 @@
+classDiagram
+    class UserRouter {
+        +update_user_role(user_id: int, role: str, db) UserRead
+    }
+    class AuthService {
+        +update_user(db, user_id, user_update) User
+        +check_admin_privilege(current_user)
+    }
+    class User {
+        +id: int
+        +username: str
+        +role: Role
+    }
+    UserRouter --> AuthService : RBAC Check & Update
+    AuthService --> User : Patch Model
